@@ -1,368 +1,230 @@
 # PRD: Agent-First Daily Fantasy Football MVP
 
-## Overview
+## Product
 
-Build a daily fantasy football platform designed for AI agents instead of human lineup managers. Agents sign up and provide a webhook URL, then the platform calls each registered agent before weekly lineup lock so the agent can submit a roster programmatically.
+Build a DFS football platform where all decisions are made by AI agents. Each participant runs their own agent, using any LLM/harness/code that they like, locally or in the cloud. The platform never runs agents and provides no human lineup editor.
 
-The MVP should provide a simple public webpage, a signup API, persistent team and lineup storage, scheduled webhook orchestration, scoring display, and final standings.
+Each week, the platform releases the same complete player and contest state to every registered agent. Agents have 300 seconds from the global release time to submit a valid lineup over outbound HTTPS.
 
-## Goals
+The protocol and audit log can verify what the platform sent, what it received, and when. Competition rules prohibit human lineup selection or approval after release.
 
-- Let AI agents register a fantasy team without using a human-facing dashboard.
-- Invoke registered agents before each NFL week to collect valid lineups.
-- Enforce roster and salary-cap rules consistently.
-- Display season state, weekly scores, and final standings on a clean public webpage.
-- Deploy as a Cloudflare-native application.
+### Out of Scope
 
-## Non-Goals
+- Payments, prizes, multiple leagues, drafts, trades, waivers, benches, or playoffs.
+- Absolute proof that a participant did not involve a human.
 
-- Human lineup editing UI.
-- Payments, prizes, or contest entry fees.
-- Multi-league support.
-- Drafts, trades, waivers, benches, or season-long roster management.
-- Advanced agent analytics or debugging tools.
+## Competition Rules
 
-## Target Users
+- The MVP covers NFL regular-season Weeks 1-18.
+- Each team submits one lineup per week.
+- The first valid lineup accepted before the deadline is final.
+- A team without an accepted lineup scores `0` for that week. Previous lineups are never reused.
+- Season points equal the sum of weekly points.
+- Tied teams share a rank; team name ascending provides deterministic display order.
 
-- AI agent builders who want to compete in fantasy football through an API.
-- Developers testing autonomous sports strategy agents.
-- Spectators who want to view standings and weekly scores.
+### Valid Lineup
 
-## MVP User Stories
+| Slot | Count | Eligible positions |
+| --- | ---: | --- |
+| QB | 1 | QB |
+| RB | 2 | RB |
+| WR | 2 | WR |
+| TE | 1 | TE |
+| FLEX | 1 | RB, WR, TE |
+| DEF | 1 | DEF |
+| K | 1 | K |
 
-- As an agent builder, I can register a team with a team name, email address, and webhook URL.
-- As an agent builder, I receive an API key after signup so future authenticated requests can identify my team.
-- As the platform, I can call every registered team's webhook before lineup lock.
-- As the platform, I can retry failed webhook requests with clear failure context.
-- As an agent, I can receive available players and prices, then return a requested lineup.
-- As a spectator, I can visit the root webpage and see the correct season state.
+Every selection must be present in the active challenge and eligible for its assigned slot. No `playerId` may appear twice, and total cost must not exceed `$200`. Prices are integer fantasy dollars.
 
-## Product Requirements
+## Participant Flow
 
-### Root Webpage
+1. Register a team with a name and email address.
+2. Receive an API key once and configure an agent to use it.
+3. Before each weekly release, start the agent locally or in the cloud.
+4. Poll or long-poll for the challenge, generate a lineup, and submit it before the fixed deadline.
+5. Follow live scores and standings on the public site.
 
-The root webpage must display one of three states:
+## Weekly Lifecycle
 
-1. **Preseason signup state**
-   - Shown before the NFL season starts.
-   - Advertises the platform and explains agent-based signup.
-   - Include a single prompt that, when run by an agent, drives the sign-up process
+Let `T` be the scheduled start of the week's first NFL game. All timestamps use RFC 3339 UTC.
 
-2. **In-season weekly scoreboard state**
-   - Shown after the first game of each NFL week has started.
-   - Displays every registered team and its current weekly point total.
-   - Sorts teams by current points descending.
-   - Clearly identifies the active NFL week.
+1. Before release, the application scheduler ingests and validates the schedule, player pool, prices, and provider IDs, then stores one immutable challenge in PostgreSQL.
+2. The challenge release time is `T - 60 minutes`.
+3. The submission deadline is `release time + 300 seconds`.
+4. A team's first poll during the window creates one team-specific run and returns the shared challenge.
+5. Re-polling returns the same run, nonce, challenge, and deadline. It never adds time.
+6. Invalid submissions may be corrected only before the original deadline.
+7. At the deadline, all accepted lineups remain sealed.
+8. At `T`, lineups become public and scoring begins.
+9. Provider corrections update weekly and season totals. Final standings publish after Week 18 is final.
 
-3. **Postseason final standings state**
-   - Shown after the fantasy season ends.
-   - Displays final standings sorted by total season points descending.
-   - Includes team name, total points, and rank.
+The PostgreSQL release and deadline timestamps are authoritative. API handlers compare server time with them on every retrieval and submission, so delayed or repeated scheduler passes cannot expose the challenge early, extend the deadline, or replace an accepted lineup. Late polling, reconnecting, transport changes, and validation failures never change the deadline.
 
-### Signup API
+## Agent API
+
+All application-owned JSON responses include a top-level natural-language `message`. Participant requests authenticate with `Authorization: Bearer <apiKey>`. `GET /api/openapi.json` publishes the standard machine-readable API contract.
+
+### Signup
 
 `POST /api/signup`
-
-Required JSON parameters:
-
-- `teamName`: public team name.
-- `email`: owner contact email.
-- `webhookUrl`: HTTPS URL that receives lineup requests.
-
-Response:
-
-- Returns a unique API key.
-- Returns a webhook signing secret.
-- Stores the team record in Cloudflare D1.
-- Rejects duplicate team names and duplicate email addresses.
-- Validates that `webhookUrl` is a valid HTTPS URL.
-- Shows the API key and webhook signing secret only once in the signup response.
-
-Example request:
 
 ```json
 {
   "teamName": "Fourth Down Optimizer",
-  "email": "agent@example.com",
-  "webhookUrl": "https://agent.example.com/fantasy-lineup"
+  "email": "agent@example.com"
 }
 ```
 
-Example response:
+Returns `201` with the team ID, one-time API key, protocol version, OpenAPI URL, and the weekly challenge retrieval action. Team names and emails are case-insensitively unique. Store only the API-key hash. `POST /api/keys/rotate`, authenticated by the current API key, invalidates it and returns a new key once.
 
-```json
-{
-  "apiKey": "dfa_live_...",
-  "webhookSecret": "dfa_whsec_..."
+### Test Challenge
+
+`POST /api/challenges/test`, authenticated by API key, optionally verifies an agent's integration without affecting scores. It returns a fixture player pool and a run with a deadline 300 seconds after creation. Repeated calls before that deadline return the same run and do not add time. The agent submits through the returned production `submitLineup` action and inspects the result through `getStatus`. After expiration, the next call creates a fresh test run.
+
+### Retrieve Challenge
+
+`GET /api/challenges/active`, authenticated by API key:
+
+- Before release or when no challenge is prepared: `200` with `{ message, available: false }`; a long-poll request may wait until release or its own timeout.
+- At or after release and before the deadline: `200` with `available: true` and the challenge response below.
+- At or after the deadline: `410 CHALLENGE_CLOSED`.
+
+```ts
+type Slot = "QB" | "RB" | "WR" | "TE" | "FLEX" | "DEF" | "K";
+
+interface ChallengeResponse {
+  message: string;
+  available: true;
+  protocolVersion: "1.0";
+  run: {
+    runId: string;
+    nonce: string;
+  };
+  actions: {
+    submitLineup: {
+      method: "POST";
+      url: string; // /api/runs/:runId/lineup
+      authorization: { scheme: "Bearer"; credential: "apiKey" };
+    };
+    getStatus: {
+      method: "GET";
+      url: string; // /api/runs/:runId/status
+      authorization: { scheme: "Bearer"; credential: "apiKey" };
+    };
+  };
+  challenge: {
+    challengeId: string;
+    season: number;
+    week: number;
+    releasedAt: string;
+    deadlineAt: string;
+    salaryCap: 200;
+    roster: Array<{
+      slot: Slot;
+      count: number;
+      eligiblePositions: string[];
+    }>;
+    players: Array<{
+      selectionId: string; // Unique to this challenge.
+      playerId: string;    // Stable across weeks.
+      name: string;
+      team: string;
+      opponent: string;
+      position: string;
+      eligibleSlots: Slot[];
+      price: number;
+      status: string;
+      gameStartsAt: string;
+    }>;
+    submissionSchema: object; // JSON Schema Draft 2020-12.
+    generatedAt: string;
+    contentHash: string; // SHA-256 of the stored challenge packet.
+  };
 }
 ```
 
-### Weekly Lineup Webhook
+The player array contains every selectable option. The packet is sufficient to validate and construct a lineup without another platform call. All teams receive identical `challenge` data; only `run` differs.
 
-One hour before the first NFL game of each week, the platform must invoke each registered team's webhook URL.
+### Submit Lineup
 
-Request method:
+`POST /api/runs/:runId/lineup`, authenticated by API key, accepts a weekly lineup. The run must belong to the authenticated team.
 
-- `POST`
-
-Request body:
-
-```json
-{
-  "event": "lineup.requested",
-  "season": 2026,
-  "week": 1,
-  "salaryCap": 200,
-  "rosterRules": {
-    "QB": 1,
-    "RB": 2,
-    "WR": 2,
-    "TE": 1,
-    "FLEX": 1,
-    "DEF": 1,
-    "K": 1
-  },
-  "players": [
-    {
-      "id": "player_123",
-      "name": "Example Player",
-      "team": "BUF",
-      "position": "QB",
-      "price": 42
-    }
-  ],
-  "retry": {
-    "attempt": 0,
-    "previousFailureReason": null
-  }
+```ts
+interface LineupSubmission {
+  protocolVersion: "1.0";
+  runId: string;
+  nonce: string;
+  lineup: Array<{ selectionId: string; slot: Slot }>;
 }
 ```
 
-Request headers:
+The deadline applies to the server receipt time of the complete request body. Reject every post-deadline attempt with `410 CHALLENGE_CLOSED` before parsing or validating the body. On success, return `200` with `message`, `accepted`, `runId`, `submittedAt`, `totalCost`, and `lineupHash`. Compute `lineupHash` from entries sorted by slot and selection ID. Before the deadline, retrying the same accepted lineup is idempotent and returns the original success. A different lineup for an accepted run returns `409 LINEUP_ALREADY_ACCEPTED`.
 
-- `X-DFA-Event`: event name.
-- `X-DFA-Request-Id`: unique request identifier.
-- `X-DFA-Timestamp`: Unix timestamp in seconds.
-- `X-DFA-Signature`: HMAC-SHA256 signature of timestamp, request ID, and raw request body using the team's webhook signing secret.
+Invalid lineups return `422` with `message`, `deadlineAt`, and `errors: Array<{ code, message }>`. Required validation codes are `SCHEMA_INVALID`, `RUN_MISMATCH`, `NONCE_MISMATCH`, `UNKNOWN_SELECTION`, `DUPLICATE_SELECTION`, `INVALID_SLOT`, `SLOT_COUNT`, and `SALARY_CAP_EXCEEDED`.
 
-Expected response:
+Other errors use `{ "message": string, "error": { "code": string, "message": string } }` with `400` for malformed requests, `401` for invalid credentials, `404` for unknown runs, `409` for conflicts, and `410` for closed challenges.
 
-```json
-{
-  "lineup": [
-    { "playerId": "player_123", "slot": "QB" }
-  ]
-}
-```
+`GET /api/runs/:runId/status`, authenticated by API key, returns the run's deadline, latest validation result, and acceptance status. It must not reveal the lineup before the first kickoff.
 
-### Webhook Timeout and Retry Rules
+### Optional MCP Adapter
 
-- Each webhook request must time out after 180 seconds.
-- If the response is invalid, non-2xx, malformed JSON, or times out, the platform must retry.
-- Retry requests must include:
-  - Previous failure reason.
-  - Retry attempt number.
-- The platform must make up to 5 retries after the initial request.
-- After retries are exhausted, the platform must send one final webhook request indicating that no more retries remain.
-- Failed teams without a valid lineup receive an empty lineup for that week and score `0`.
+MCP is not required for MVP acceptance. A future Streamable HTTP endpoint at `POST /mcp` may expose `wait_for_lineup_challenge`, `submit_lineup`, and `get_submission_status`. It must use the same authentication, records, deadlines, validation, and audit service as HTTPS and must not expose additional data or time.
 
-Final exhausted request example:
+## Public Website
 
-```json
-{
-  "event": "lineup.failed",
-  "season": 2026,
-  "week": 1,
-  "retry": {
-    "attempt": 6,
-    "previousFailureReason": "salary_cap_exceeded",
-    "retriesExhausted": true
-  }
-}
-```
+`GET /` renders exactly one state from `GET /api/public/state`:
 
-### Lineup Validation
+1. **Preseason:** Before the season's first kickoff, show the competition, signup API, and agent setup prompt.
+2. **In season:** From the first kickoff until Week 18 is final, show the active week and every team sorted by weekly points descending, then team name ascending. Reveal lineups only after that week's first kickoff.
+3. **Final:** After Week 18 is final, show every team ranked by season points.
 
-A valid lineup must include:
+Use React and shadcn. The design must be modern, clean, responsive, and focused on the competition. Do not provide a player picker or any lineup mutation control.
 
-- 1 QB
-- 2 RB
-- 2 WR
-- 1 TE
-- 1 FLEX
-- 1 DEF
-- 1 K
+## Data and Scoring
 
-Additional validation rules:
+Fantasy Nerds is the primary source for schedules, player metadata, DFS salaries, game status, and fantasy points. A provider adapter normalizes source records into the challenge schema and integer `$200` pricing model. The normalized price in the released challenge is authoritative. The configured Fantasy Nerds fantasy-point total is authoritative; the MVP does not calculate points from raw stats.
 
-- Total player cost must not exceed `$200`.
-- Each selected player must exist in the weekly player pool.
-- A player may appear only once in a lineup.
-- FLEX may contain RB, WR, or TE.
-- Slot assignments must match player eligibility.
+Seeded fixtures must support local development and automated tests without provider credentials.
 
-### Season Scope
+## Audit
 
-- MVP season includes NFL regular season Weeks 1-17.
-- Week 18 and NFL playoff games are excluded from MVP standings.
-- Final standings are calculated after Week 17 scores are finalized.
-- The season scope should be configurable so later versions can include Week 18, playoff contests, or custom league calendars.
+Record challenge release and delivery, authenticated team, run and challenge IDs, content hash, protocol version, server timestamps, transport, every submission payload hash, validation result, accepted lineup hash, and observable auth or connection failures. Audit events are insert-only and hash-chained per run. Client name and version are informational only.
 
-### Data Sources
+Audit data and lineups are private before kickoff; lineups become public afterward. Audit records support investigation but are not proof of an unattended agent.
 
-- MVP should use SportsDataIO Fantasy Sports API as the primary source for NFL schedules, weekly player pools, player prices, and live fantasy points.
-- Local development and automated tests should use seeded fixture data so the application is testable without a live sports data subscription.
-- If strict official NFL data is required later, evaluate Sportradar's official NFL API for schedules, game state, and live statistics while retaining a fantasy-specific provider for DFS salaries and slates.
+## Architecture
 
-## Technical Requirements
+- **Runtime:** Node.js and Hono on Fly.io serve the API and React application from one container.
+- **Database:** PostgreSQL stores teams, challenges, selections, runs, attempts, lineups, audit events, and materialized scores. Production uses Fly Managed Postgres.
+- **Orchestration:** One scheduler loop in the Node process periodically reconciles weekly preparation, lifecycle state, provider retries, score sync, and finalization. PostgreSQL advisory locks serialize each job across Machines.
+- **Operations:** Scheduler jobs are idempotent and retry after failures. PostgreSQL state and the permanent audit trail provide recovery without a second workflow system.
+- **Authority:** PostgreSQL stores the immutable challenge, release time, deadline, and accepted lineup. Hono handlers enforce those records independently of scheduler timing.
+- **Scale:** Create runs lazily with a unique `(challenge_id, team_id)` constraint. Never create per-team delivery jobs. Materialize standings asynchronously.
+- **Security:** Require HTTPS, hash API keys, restrict runs to the authenticated team, keep email and audit data private, and serialize scheduled jobs with PostgreSQL advisory locks.
 
-### Runtime and Deployment
+### Minimum PostgreSQL Model
 
-- API framework: Hono.
-- Database: Cloudflare D1.
-- Deployment target: Cloudflare Workers or Cloudflare Pages with Functions.
-- Scheduling and fan-out: Inngest.
-- UI design system: shadcn.
+| Entity | Required data and constraints |
+| --- | --- |
+| `teams` | ID, unique normalized name/email, API-key hash, created time |
+| `challenges` | ID, unique season/week, status, protocol, release/deadline, cap, packet JSON, content hash |
+| `selections` | Challenge ID, unique selection ID, stable player/provider ID, player fields, eligibility, price |
+| `runs` | ID, unique challenge/team, nonce, first delivery, status, accepted time/hash |
+| `attempts` | Run ID, receipt time, transport, payload hash, status, validation errors |
+| `lineups` | Run/team/week, total cost, hash, accepted time; child rows for selection and slot |
+| `audit_events` | Run ID, event type/time, metadata, previous hash, event hash |
+| `scores` | Unique team/season/week, weekly points, updated time |
+| `standings` | Unique team/season, season points, rank, updated time |
 
-### Suggested Architecture
+All creation and acceptance paths must be transactional and idempotent.
 
-- Hono handles API routes and server-rendered or static page data endpoints.
-- Cloudflare D1 stores teams, API keys, player pools, lineup submissions, webhook attempts, weekly scores, and standings.
-- Inngest schedules weekly lineup collection jobs.
-- Inngest fans out one webhook workflow per registered team.
-- A validation service checks webhook responses before storing accepted lineups.
-- A scoring ingestion process updates weekly points as NFL games progress.
+## Acceptance Tests
 
-### Core Data Model
-
-#### `teams`
-
-- `id`
-- `team_name`
-- `email`
-- `webhook_url`
-- `api_key_hash`
-- `webhook_secret_hash`
-- `created_at`
-
-#### `players`
-
-- `id`
-- `season`
-- `week`
-- `name`
-- `nfl_team`
-- `position`
-- `price`
-
-#### `lineups`
-
-- `id`
-- `team_id`
-- `season`
-- `week`
-- `status`
-- `total_cost`
-- `created_at`
-
-#### `lineup_players`
-
-- `lineup_id`
-- `player_id`
-- `slot`
-
-#### `webhook_attempts`
-
-- `id`
-- `team_id`
-- `season`
-- `week`
-- `attempt_number`
-- `status`
-- `failure_reason`
-- `response_status`
-- `started_at`
-- `completed_at`
-
-#### `scores`
-
-- `team_id`
-- `season`
-- `week`
-- `points`
-- `updated_at`
-
-## API Endpoints
-
-### Public
-
-- `GET /`
-  - Displays preseason signup, in-season scoreboard, or final standings.
-
-- `POST /api/signup`
-  - Registers a team and returns an API key plus webhook signing secret.
-
-- `POST /api/keys/rotate`
-  - Rotates an authenticated team's API key.
-
-- `POST /api/webhook-secret/rotate`
-  - Rotates an authenticated team's webhook signing secret.
-
-### Internal or Scheduled
-
-- `POST /api/inngest`
-  - Inngest function endpoint.
-
-- `POST /internal/score-sync`
-  - Optional MVP endpoint for score ingestion if scores are updated by a separate scheduled process.
-
-## UX and Design Requirements
-
-- The visual design should be modern, clean, and minimal.
-- Use shadcn components for layout, forms, tables, alerts, badges, and buttons.
-- The root page should feel like a live competition surface, not a marketing site.
-- Preseason state should prioritize signup instructions and API clarity.
-- Scoreboard and standings states should prioritize readable tables, rank, team name, and points.
-- Avoid building a human lineup editor.
-
-## Acceptance Criteria
-
-- A team can sign up by calling `POST /api/signup` with valid JSON.
-- Signup returns a unique API key, returns a webhook signing secret, and persists the team in D1.
-- Invalid signup payloads return clear validation errors.
-- A scheduled Inngest workflow can identify the first NFL game of a week and trigger lineup collection one hour before kickoff.
-- The platform fans out webhook requests to all registered teams.
-- Webhook requests include player prices and roster rules.
-- Webhook requests are signed.
-- Invalid or timed-out webhook responses are retried with failure context.
-- Retries stop after 5 retry attempts.
-- A final exhausted notification is sent after all retries fail.
-- Valid lineups are stored.
-- Invalid lineups are rejected and logged with a reason.
-- The root webpage renders the correct state for preseason, in-season, and postseason.
-
-## MVP Decisions
-
-### What source provides NFL schedules, player pools, prices, and live scoring?
-
-Use SportsDataIO Fantasy Sports API as the primary MVP data provider because it covers schedules, DFS salaries and slates, and live fantasy points in one integration. Use seeded fixtures for local development and tests. If the product later requires official NFL-licensed game feeds, evaluate Sportradar for schedules, game state, and live statistics while keeping a fantasy-specific source for player prices.
-
-### Is the fantasy season regular season only, or does it include NFL playoffs?
-
-The MVP runs during NFL regular season Weeks 1-17 only. Week 18 and NFL playoffs are excluded to avoid late-season rest uncertainty and playoff-format complexity. Final standings are published after Week 17 scoring is finalized.
-
-### Should agents authenticate webhook responses with their API key or a request signature?
-
-Agents do not need to include their API key in webhook responses. The response is accepted only as the direct response to a platform-initiated, signed webhook request with a known request ID. API keys are reserved for agent-initiated API calls.
-
-### Should webhook requests be signed so agents can verify they came from the platform?
-
-Yes. Every platform-to-agent webhook request must include timestamped HMAC-SHA256 signature headers. Agents can verify the signature with the webhook signing secret returned during signup. The platform should reject replay-prone requests internally and document a recommended five-minute timestamp tolerance for agents.
-
-### Should missed lineup submissions default to an empty lineup, a previous lineup, or a generated minimum-cost lineup?
-
-Missed or invalid lineup submissions default to an empty lineup worth `0` points for that week. This is the clearest MVP behavior for an agent competition because it does not reward stale or platform-generated decisions.
-
-### Are API keys shown only once, or can they be rotated later?
-
-API keys and webhook signing secrets are shown only once during signup. Teams can rotate both through authenticated API endpoints. The platform stores only hashes of API keys and webhook signing secrets.
+1. Signup returns a one-time API key without requesting a webhook URL; duplicate name or email returns `409`.
+2. Every registered team can retrieve weekly challenges without an additional onboarding gate.
+3. Before release no participant can retrieve the prepared weekly packet; at release every team receives identical challenge data and the same deadline. Scheduler delay or repetition cannot change either timestamp.
+4. Re-polling a weekly challenge produces one run per team and never extends the deadline.
+5. The validator accepts every legal roster and returns structured errors for every rule violation; correction is possible only while time remains.
+6. Concurrent or repeated submissions store exactly one first valid lineup. Missing, invalid, and late submissions score `0`.
+7. Lineups remain private until kickoff, then live provider updates produce weekly and season standings.
+8. Audit records reconstruct each delivered packet and submission attempt, and the root page renders the correct preseason, in-season, and final state.

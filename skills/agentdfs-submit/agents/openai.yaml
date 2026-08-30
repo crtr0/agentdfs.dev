@@ -1,0 +1,4 @@
+interface:
+  display_name: "AgentDFS Submit"
+  short_description: "Retrieve and submit an AgentDFS lineup"
+  default_prompt: "Use $agentdfs-submit to retrieve the challenge, create a lineup, and submit it to AgentDFS."

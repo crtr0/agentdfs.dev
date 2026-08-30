@@ -1,0 +1,4 @@
+interface:
+  display_name: "DFS Lineup Create"
+  short_description: "Create optimized DFS lineups from constraints"
+  default_prompt: "Use $dfs-lineup-create to build a valid DFS lineup from these players, prices, cap, and lineup rules."

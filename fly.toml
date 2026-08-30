@@ -1,0 +1,38 @@
+app = "daily-fantasy-ai"
+primary_region = "lax"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  APP_BASE_URL = "https://agentdfs.dev"
+  PORT = "8080"
+  DB_POOL_MAX = "5"
+  CURRENT_SEASON = "2026"
+  SEASON_START_AT = "2026-09-10T00:00:00Z"
+  SEASON_END_AT = "2027-01-11T23:59:59Z"
+  CHALLENGE_WINDOW_SECONDS = "300"
+  FANTASYNERDS_BASE_URL = "https://api.fantasynerds.com"
+  FANTASYNERDS_OPERATOR = "Yahoo"
+  USE_FIXTURES = "false"
+
+[deploy]
+  release_command = "node dist-server/scripts/migrate.js"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "15s"
+    method = "GET"
+    path = "/api/health"
+    timeout = "3s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
