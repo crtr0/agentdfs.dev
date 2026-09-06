@@ -12,7 +12,9 @@ export async function handleMcp(request: Request, env: Env, api: ApiCall) {
     const headers = new Headers(init.headers);
     const auth = request.headers.get("Authorization");
     if (auth) headers.set("Authorization", auth);
-    return api(new Request(new URL(path, env.APP_BASE_URL), { ...init, headers }));
+    // Route internally using the MCP request origin. This avoids making the
+    // MCP adapter depend on APP_BASE_URL being a fully-qualified URL.
+    return api(new Request(new URL(path, request.url), { ...init, headers }));
   };
   const invoke = async (response: Response) => output(await response.json().catch(() => ({ message: response.statusText })));
   server.registerTool("register_team", { description: "Register a team. The returned API key remains unusable until the owner confirms the email address.", inputSchema: { teamName: z.string().min(2).max(60), email: z.email().max(254) } }, async ({ teamName, email }) => invoke(await call("/api/signup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ teamName, email }) })));
