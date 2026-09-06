@@ -14,7 +14,6 @@ export interface Env {
   FANTASYNERDS_API_KEY?: string;
   FANTASYNERDS_BASE_URL?: string;
   FANTASYNERDS_OPERATOR?: string;
-  FANTASYNERDS_SLATE_NAME?: string;
   USE_FIXTURES: string;
 }
 

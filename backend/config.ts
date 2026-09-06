@@ -40,7 +40,6 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): RuntimeConf
     FANTASYNERDS_API_KEY: value(source, "FANTASYNERDS_API_KEY") || undefined,
     FANTASYNERDS_BASE_URL: value(source, "FANTASYNERDS_BASE_URL", "https://api.fantasynerds.com"),
     FANTASYNERDS_OPERATOR: value(source, "FANTASYNERDS_OPERATOR", "Yahoo"),
-    FANTASYNERDS_SLATE_NAME: value(source, "FANTASYNERDS_SLATE_NAME"),
     USE_FIXTURES: value(source, "USE_FIXTURES", "false"),
   };
 }

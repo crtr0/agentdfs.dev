@@ -129,8 +129,13 @@ export async function getChallengePlayers(
   if (!env.FANTASYNERDS_API_KEY) throw new Error("FANTASYNERDS_API_KEY is required");
   const slateListing = await providerFetchJson<Record<string, unknown>>(env, "/v1/nfl/dfs-slates");
   const yahoo = ((slateListing.platforms as Record<string, unknown> | undefined)?.yahoo ?? []) as Array<Record<string, unknown>>;
-  const slate = yahoo.find((candidate) => Number(candidate.week ?? week) === week
-    && (!env.FANTASYNERDS_SLATE_NAME || candidate.slate_name === env.FANTASYNERDS_SLATE_NAME));
+  const eligibleSlates = yahoo.filter((candidate) =>
+    Number(candidate.season) === season && Number(candidate.week) === week,
+  );
+  const slate = eligibleSlates.reduce<Record<string, unknown> | null>((best, candidate) => {
+    if (!best || Number(candidate.teams ?? 0) > Number(best.teams ?? 0)) return candidate;
+    return best;
+  }, null);
   if (!slate?.slateId) throw new Error(`No Yahoo DFS slate found for ${season} week ${week}`);
   const [dfs, scheduleResponse] = await Promise.all([
     providerFetchJson<Record<string, unknown>>(env, `/v1/nfl/dfs?slateId=${encodeURIComponent(String(slate.slateId))}`),
@@ -158,7 +163,9 @@ export async function getChallengePlayers(
       opponent,
       position,
       eligibleSlots: eligibleSlots(position),
-      price: Math.max(1, Math.round((salary / Number(slate.salary_cap ?? 50_000)) * 200)),
+      // Fantasy Nerds returns Yahoo salaries already expressed in Yahoo's $200 scale
+      // (for example, 14 means $14). Do not convert them from a $50,000 scale.
+      price: Math.max(1, Math.round(salary)),
       status: String(entry.status ?? "ACTIVE").toUpperCase(),
       gameStartsAt: new Date(gameStartsAt).toISOString(),
     } satisfies ChallengePlayer];

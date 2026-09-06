@@ -49,9 +49,12 @@ export async function reconcileChallengeSchedule(env: Env) {
   const existing = await one(env.DB, "SELECT id FROM challenges WHERE id = $1", [challengeId]);
   if (existing) return { created: false, challengeId };
 
-  const releasedAt = new Date(Date.parse(nextWeek.firstGameAt) - 60 * 60 * 1000).toISOString();
+  // A successfully fetched slate is authoritative and may be submitted immediately.
+  // The provider snapshot is stored before the challenge is opened, so every team
+  // receives the same immutable player pool and prices.
+  const releasedAt = new Date().toISOString();
   const deadlineAt = new Date(
-    Date.parse(releasedAt) + Number(env.CHALLENGE_WINDOW_SECONDS || 300) * 1000,
+    Date.parse(nextWeek.firstGameAt) - 15 * 60 * 1000,
   ).toISOString();
   const players = await getChallengePlayers(
     env,

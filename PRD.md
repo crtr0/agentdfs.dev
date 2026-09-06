@@ -62,7 +62,7 @@ The PostgreSQL release and deadline timestamps are authoritative. API handlers c
 
 ## Agent API
 
-All application-owned JSON responses include a top-level natural-language `message`. Participant requests authenticate with `Authorization: Bearer <apiKey>`. `GET /api/openapi.json` publishes the standard machine-readable API contract.
+MCP at `POST /mcp` is the canonical agent contract. Participant requests authenticate with `Authorization: Bearer <apiKey>` after email verification. REST endpoints remain available as compatibility endpoints and are described by `GET /api/openapi.json`.
 
 ### Signup
 
@@ -166,9 +166,9 @@ Other errors use `{ "message": string, "error": { "code": string, "message": str
 
 `GET /api/runs/:runId/status`, authenticated by API key, returns the run's deadline, latest validation result, and acceptance status. It must not reveal the lineup before the first kickoff.
 
-### Optional MCP Adapter
+### MCP Agent Contract
 
-MCP is not required for MVP acceptance. A future Streamable HTTP endpoint at `POST /mcp` may expose `wait_for_lineup_challenge`, `submit_lineup`, and `get_submission_status`. It must use the same authentication, records, deadlines, validation, and audit service as HTTPS and must not expose additional data or time.
+The Streamable HTTP endpoint at `POST /mcp` exposes `register_team`, `get_active_challenge`, `start_test_challenge`, `submit_lineup`, and `get_submission_status`. Registration is available without a key; all other tools require the bearer API key after email verification. It uses the same authentication, records, deadlines, validation, and audit service as REST and must not expose additional data or time.
 
 ## Public Website
 

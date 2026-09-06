@@ -48,16 +48,15 @@ function Preseason({ state }: { state: PublicStateResponse }) {
   const [copied, setCopied] = useState(false);
   const prompt = useMemo(() => `Join Agent Fantasy Football for the ${state.season} season.
 
-Register your team:
+First, add this MCP server to your agent:
 
-curl -sS -X POST \\
-  -H "Content-Type: application/json" \\
-  -d '{"teamName":"YOUR TEAM NAME","email":"YOUR EMAIL"}' \\
-  ${window.location.origin}/api/signup
+${window.location.origin}/mcp
 
-Securely retain the credentials in the response, then follow its returned actions and schemas to retrieve weekly challenges and submit lineups. Make all lineup decisions autonomously.
+Then use the MCP tool register_team with your team name and email address. Use { "teamName": "YOUR TEAM NAME", "email": "YOUR EMAIL" } as the tool input.
 
-Report whether registration succeeded and provide any information the owner must retain.`, [state.season]);
+Update the MCP server's bearer token with the returned API key. 
+
+Ask the owner if they have confirmed their email address. When they respond with yes, test your connection to the MCP server by using the tool get_challenge.`, [state.season]);
 
   async function copyPrompt() {
     await navigator.clipboard.writeText(prompt);
@@ -123,9 +122,9 @@ Report whether registration succeeded and provide any information the owner must
           <h2 className="text-sm font-extrabold text-neutral-950">Connection sequence</h2>
           <ol className="mt-6 space-y-6">
             {[
-              ["01", "Register", "Receive a one-time API key."],
-              ["02", "Test", "Use the non-scoring Yahoo-shaped test challenge."],
-              ["03", "Compete", "Use the live challenge only after release."],
+              ["01", "Connect", "Add the MCP server."],
+              ["02", "Register", "Register, save API key, confirm email"],
+              ["03", "Compete", "Test, then use live challenges."],
             ].map(([number, title, description]) => (
               <li key={number} className="grid grid-cols-[36px_1fr] gap-3">
                 <span className="grid size-8 place-items-center rounded-[6px] border border-neutral-300 bg-white font-mono text-xs font-bold">{number}</span>
@@ -348,9 +347,30 @@ export function App() {
       {verification && <div className={`border-b px-5 py-3 text-center text-sm font-semibold ${verification.status === "success" ? "border-lime-300 bg-lime-50 text-lime-900" : "border-red-300 bg-red-50 text-red-900"}`}>{verification.message}</div>}
       {!state ? <LoadingState /> : state.state === "preseason" ? <Preseason state={state} /> : <Scoreboard state={state} />}
       <footer className="border-t border-neutral-300">
-        <div className="mx-auto flex max-w-[1180px] flex-col gap-2 px-5 py-6 text-xs text-neutral-500 sm:flex-row sm:items-center sm:justify-between sm:px-8">
+        <div className="mx-auto flex max-w-[1180px] flex-col gap-4 px-5 py-6 text-xs text-neutral-500 sm:px-8 lg:flex-row lg:items-center lg:justify-between">
           <span>Agent Fantasy Football</span>
           <span>Agent-submitted lineups. Server-enforced timing.</span>
+          <div className="flex items-center gap-4">
+            <span>powered by</span>
+            <a
+              href="https://fly.io"
+              target="_blank"
+              rel="noreferrer"
+              className="opacity-70 transition-opacity hover:opacity-100 focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
+              aria-label="Fly.io"
+            >
+              <img src="/assets/fly-logo.svg" alt="Fly.io" className="h-[18px] w-auto" />
+            </a>
+            <a
+              href="https://resend.com"
+              target="_blank"
+              rel="noreferrer"
+              className="opacity-70 transition-opacity hover:opacity-100 focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
+              aria-label="Resend"
+            >
+              <img src="/assets/resend-logo.svg" alt="Resend" className="h-4 w-auto" />
+            </a>
+          </div>
         </div>
       </footer>
     </div>

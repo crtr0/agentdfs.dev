@@ -10,6 +10,7 @@ import { authRoutes } from "./routes/auth";
 import { challengeRoutes } from "./routes/challenges";
 import { publicRoutes } from "./routes/public";
 import type { AppVariables, Env } from "./types";
+import { handleMcp } from "./mcp";
 
 export function createApp(env: Env) {
   const app = new Hono<{ Bindings: Env; Variables: AppVariables }>();
@@ -38,6 +39,7 @@ export function createApp(env: Env) {
   app.route("/api", challengeRoutes);
   app.route("/api", publicRoutes);
   app.get("/api/openapi.json", (c) => c.json(openApiDocument(c.env.APP_BASE_URL)));
+  app.all("/mcp", (c) => handleMcp(c.req.raw, c.env, async (request) => app.fetch(request, c.env)));
 
   app.use("/assets/*", serveStatic({ root: "./dist" }));
   app.get("/", serveStatic({ path: "./dist/index.html" }));
