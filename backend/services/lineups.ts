@@ -63,7 +63,7 @@ async function recordAttempt(
     `INSERT INTO attempts
       (id, run_id, received_at, transport, payload_hash, status, validation_errors)
      VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-    [randomId("attempt"), runId, receivedAt, transport, payloadHash, status, errors],
+    [randomId("attempt"), runId, receivedAt, transport, payloadHash, status, JSON.stringify(errors)],
   );
 }
 

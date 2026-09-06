@@ -28,10 +28,9 @@ export interface CreateChallengeInput {
 }
 
 export async function refreshChallenge(db: Database, env: Env, challenge: ChallengeRecord) {
-  const runs = await one<{ count: number }>(db, "SELECT COUNT(*)::int AS count FROM runs WHERE challenge_id = $1", [challenge.id]);
-  if ((runs?.count ?? 0) > 0) throw new Error("Challenge cannot be refreshed after runs have been delivered.");
   const players = await getChallengePlayers(env, challenge.season, challenge.week, challenge.id, challenge.first_game_at);
   const roster = await getChallengeRoster(env, challenge.season, challenge.week);
+  const generatedAt = new Date().toISOString();
   const packetWithoutHash = {
     challengeId: challenge.id,
     season: challenge.season,
@@ -43,12 +42,35 @@ export async function refreshChallenge(db: Database, env: Env, challenge: Challe
     roster,
     players,
     submissionSchema: LINEUP_SUBMISSION_SCHEMA,
-    generatedAt: new Date().toISOString(),
+    generatedAt,
   };
   const contentHash = await sha256(stableStringify(packetWithoutHash));
   const packet = { ...packetWithoutHash, contentHash };
   await transaction(db, async (client) => {
-    await client.query("DELETE FROM selections WHERE challenge_id = $1", [challenge.id]);
+    // The foreign keys on all challenge-owned records use ON DELETE CASCADE.
+    // Removing the challenge first ensures stale runs, attempts, audits, and
+    // accepted lineups cannot survive the destructive refresh.
+    await client.query("DELETE FROM challenges WHERE id = $1", [challenge.id]);
+    await client.query(
+      `INSERT INTO challenges
+        (id, season, week, status, protocol_version, released_at, deadline_at,
+         first_game_at, salary_cap, packet, content_hash, generated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+      [
+        challenge.id,
+        challenge.season,
+        challenge.week,
+        Date.parse(challenge.released_at) > Date.now() ? "ready" : "open",
+        PROTOCOL_VERSION,
+        challenge.released_at,
+        challenge.deadline_at,
+        challenge.first_game_at,
+        SALARY_CAP,
+        packet,
+        contentHash,
+        generatedAt,
+      ],
+    );
     for (const entry of players) {
       await client.query(
         `INSERT INTO selections

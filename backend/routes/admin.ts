@@ -26,7 +26,7 @@ adminRoutes.post("/admin/challenges/:id/refresh", async (c) => {
     if (c.req.query("redirect") === "1") {
       return c.redirect(`/admin/challenges?id=${encodeURIComponent(id)}&refreshed=${result.players}`);
     }
-    return c.json({ message: "Challenge refreshed from Fantasy Nerds.", ...result });
+    return c.json({ message: "Challenge deleted and re-created from Fantasy Nerds.", ...result });
   } catch (error) {
     if (c.req.query("redirect") === "1") {
       const message = error instanceof Error ? error.message : "Challenge refresh failed.";
@@ -46,10 +46,10 @@ adminRoutes.get("/admin/challenges", async (c) => {
   const refreshed = c.req.query("refreshed");
   const refreshError = c.req.query("refresh_error");
   const refreshNotice = refreshed
-    ? `<p>Challenge refreshed from Fantasy Nerds (${esc(refreshed)} selections).</p>`
+    ? `<p>Challenge deleted and re-created from Fantasy Nerds (${esc(refreshed)} selections).</p>`
     : refreshError ? `<p style="color:#a12622">Refresh failed: ${esc(refreshError)}</p>` : "";
   const detail = selected ? `<h2>Challenge details</h2><p>Status: ${esc(selected.status)} · Protocol: ${esc(selected.protocol_version)} · Salary cap: ${esc(selected.salary_cap)}<br>Released: ${esc(selected.released_at)} · Deadline: ${esc(selected.deadline_at)} · First game: ${esc(selected.first_game_at)}<br>Content hash: ${esc(selected.content_hash)}</p><h3>Submitted lineups</h3>${teams.rows.length ? table(["Team", "Team ID", "Total cost", "Accepted", "Lineup hash"], teams.rows.map((r) => [`<a href="/admin/teams?id=${encodeURIComponent(String(r.team_id))}">${esc(r.team_name)}</a>`, r.team_id, r.total_cost, r.accepted_at, r.lineup_hash])) : "<p class=\"muted\">No accepted lineups.</p>"}` : "<p class=\"muted\">Select a challenge to inspect it.</p>";
-  const refreshControl = selected ? `${refreshNotice}<form method="post" action="/admin/challenges/${encodeURIComponent(String(selected.id))}/refresh?redirect=1" onsubmit="return confirm('Refresh this challenge from Fantasy Nerds? This is only allowed before runs are delivered.');"><button type="submit">Refresh from Fantasy Nerds</button></form>` : "";
+  const refreshControl = selected ? `${refreshNotice}<form method="post" action="/admin/challenges/${encodeURIComponent(String(selected.id))}/refresh?redirect=1" onsubmit="return confirm('This will permanently delete the challenge and all associated runs, attempts, audits, and lineups, then re-create it from Fantasy Nerds. Continue?');"><button type="submit">Delete and re-create from Fantasy Nerds</button></form>` : "";
   const selectionView = selected ? `${refreshControl}<h3>Available selections (${selections.rows.length})</h3>${table(["Selection", "Player ID", "Name", "NFL team", "Opponent", "Position", "Eligible slots", "Price", "Status", "Game starts"], selections.rows.map((r) => [r.selection_id, r.player_id, r.name, r.nfl_team, r.opponent, r.position, r.eligible_slots, r.price, r.player_status, r.game_starts_at]))}` : "";
   return c.html(shell("Challenges", `<h2>Challenges</h2>${table(["Challenge", "ID", "Status", "Released", "Deadline", "Salary cap"], rows)}${selectionView}${detail}`));
 });
