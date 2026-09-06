@@ -14,11 +14,12 @@ export const requireApiKey = createMiddleware<{
   const hash = await sha256(token);
   const team = await one<TeamRecord>(
     c.env.DB,
-    "SELECT id, team_name, email, api_key_hash, created_at FROM teams WHERE api_key_hash = $1",
+    "SELECT id, team_name, email, api_key_hash, email_verified_at, created_at FROM teams WHERE api_key_hash = $1",
     [hash],
   );
 
   if (!team) return apiError(c, 401, "INVALID_CREDENTIALS", "A valid API key is required.");
+  if (!team.email_verified_at) return apiError(c, 403, "EMAIL_NOT_VERIFIED", "Confirm your email address before using this API key.");
   c.set("team", team);
   await next();
 });

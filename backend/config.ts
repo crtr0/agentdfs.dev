@@ -30,6 +30,8 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): RuntimeConf
     DB_POOL_MAX: positiveInteger(source, "DB_POOL_MAX", 5),
     PORT: positiveInteger(source, "PORT", 8080),
     APP_BASE_URL: value(source, "APP_BASE_URL", "http://127.0.0.1:8080"),
+    RESEND_API_KEY: value(source, "RESEND_API_KEY") || undefined,
+    EMAIL_FROM: value(source, "EMAIL_FROM", "AgentDFS <onboarding@resend.dev>"),
     ADMIN_SECRET: value(source, "ADMIN_SECRET") || undefined,
     CURRENT_SEASON: value(source, "CURRENT_SEASON", "2026"),
     SEASON_START_AT: value(source, "SEASON_START_AT", "2026-09-10T00:00:00Z"),

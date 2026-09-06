@@ -1,5 +1,6 @@
 DROP TABLE IF EXISTS standings;
 DROP TABLE IF EXISTS scores;
+DROP TABLE IF EXISTS email_verification_tokens;
 DROP TABLE IF EXISTS audit_events;
 DROP TABLE IF EXISTS lineup_players;
 DROP TABLE IF EXISTS lineups;

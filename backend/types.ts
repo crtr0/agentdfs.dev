@@ -4,6 +4,8 @@ import type { ChallengePacket, ValidationError } from "../src/shared/contracts";
 export interface Env {
   DB: Database;
   APP_BASE_URL: string;
+  RESEND_API_KEY?: string;
+  EMAIL_FROM?: string;
   ADMIN_SECRET?: string;
   CURRENT_SEASON: string;
   SEASON_START_AT: string;
@@ -25,6 +27,7 @@ export interface TeamRecord {
   team_name: string;
   email: string;
   api_key_hash: string;
+  email_verified_at?: string | null;
   created_at: string;
 }
 

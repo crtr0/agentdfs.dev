@@ -1,4 +1,4 @@
-app = "daily-fantasy-ai"
+app = "agentdfs"
 primary_region = "lax"
 
 [build]

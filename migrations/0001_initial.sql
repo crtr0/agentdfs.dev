@@ -5,8 +5,20 @@ CREATE TABLE teams (
   email TEXT NOT NULL,
   normalized_email TEXT NOT NULL UNIQUE,
   api_key_hash TEXT NOT NULL UNIQUE,
+  email_verified_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL
 );
+
+CREATE TABLE email_verification_tokens (
+  id TEXT PRIMARY KEY,
+  team_id TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  token_hash TEXT NOT NULL UNIQUE,
+  expires_at TIMESTAMPTZ NOT NULL,
+  used_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE INDEX email_verification_tokens_team ON email_verification_tokens(team_id, created_at DESC);
 
 CREATE TABLE challenges (
   id TEXT PRIMARY KEY,

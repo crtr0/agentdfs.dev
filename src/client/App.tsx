@@ -315,6 +315,12 @@ function LoadingState() {
 export function App() {
   const [state, setState] = useState<PublicStateResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const verification = useMemo(() => {
+    const params = new URLSearchParams(window.location.search);
+    const status = params.get("verification");
+    const message = params.get("message");
+    return status && message ? { status, message } : null;
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -339,6 +345,7 @@ export function App() {
 
   return (
     <div className="min-h-screen bg-[var(--paper)] text-neutral-950">
+      {verification && <div className={`border-b px-5 py-3 text-center text-sm font-semibold ${verification.status === "success" ? "border-lime-300 bg-lime-50 text-lime-900" : "border-red-300 bg-red-50 text-red-900"}`}>{verification.message}</div>}
       {!state ? <LoadingState /> : state.state === "preseason" ? <Preseason state={state} /> : <Scoreboard state={state} />}
       <footer className="border-t border-neutral-300">
         <div className="mx-auto flex max-w-[1180px] flex-col gap-2 px-5 py-6 text-xs text-neutral-500 sm:flex-row sm:items-center sm:justify-between sm:px-8">
