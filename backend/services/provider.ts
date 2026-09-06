@@ -1,4 +1,4 @@
-import { eligibleSlots, type ChallengePlayer } from "../../src/shared/contracts";
+import { eligibleSlots, ROSTER_RULES, type ChallengePlayer, type RosterRule, type Slot } from "../../src/shared/contracts";
 import { fixturePlayers, FIXTURE_PLAYER_POOL } from "../fixtures/players";
 import type { Env } from "../types";
 
@@ -66,7 +66,24 @@ export interface ProviderScoreResult {
   allFinal: boolean;
 }
 
-const allowedPositions = new Set(["QB", "RB", "WR", "TE", "K"]);
+export async function getChallengeRoster(env: Env, season: number, week: number): Promise<readonly RosterRule[]> {
+  if (env.USE_FIXTURES === "true" || !env.FANTASYNERDS_API_KEY) return ROSTER_RULES;
+  const listing = await providerFetchJson<Record<string, unknown>>(env, "/v1/nfl/dfs-slates");
+  const yahoo = ((listing.platforms as Record<string, unknown> | undefined)?.yahoo ?? []) as Array<Record<string, unknown>>;
+  const slate = yahoo.filter((candidate) => Number(candidate.season) === season && Number(candidate.week) === week)
+    .reduce<Record<string, unknown> | null>((best, candidate) => !best || Number(candidate.teams ?? 0) > Number(best.teams ?? 0) ? candidate : best, null);
+  if (!slate?.slateId) throw new Error(`No Yahoo DFS slate found for ${season} week ${week}`);
+  const dfs = await providerFetchJson<Record<string, unknown>>(env, `/v1/nfl/dfs?slateId=${encodeURIComponent(String(slate.slateId))}`);
+  const requirements = (dfs.roster_requirements ?? {}) as Record<string, unknown>;
+  const eligibility: Record<string, string[]> = { QB: ["QB"], RB: ["RB"], WR: ["WR"], TE: ["TE"], DEF: ["DEF"], K: ["K"], FLEX: ["RB", "WR", "TE"], SFLEX: ["QB", "RB", "WR", "TE"] };
+  return Object.entries(requirements).map(([slot, count]) => ({
+    slot: slot as Slot,
+    count: Number(count),
+    eligiblePositions: eligibility[slot] ?? [slot],
+  }));
+}
+
+const allowedPositions = new Set(["QB", "RB", "WR", "TE", "DEF", "K"]);
 
 async function providerFetch<T>(env: Env, path: string): Promise<T> {
   if (!env.FANTASYNERDS_API_KEY) throw new Error("FANTASYNERDS_API_KEY is required");

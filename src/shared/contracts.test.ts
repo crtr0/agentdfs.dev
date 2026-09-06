@@ -13,6 +13,6 @@ describe("competition contract", () => {
 
   it("keeps the public protocol constants stable", () => {
     expect(SALARY_CAP).toBe(200);
-    expect(SLOTS).toEqual(["QB", "RB", "WR", "TE", "FLEX", "DEF", "K"]);
+    expect(SLOTS).toEqual(["QB", "RB", "WR", "TE", "FLEX", "SFLEX", "DEF", "K"]);
   });
 });

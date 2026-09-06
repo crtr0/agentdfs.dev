@@ -6,13 +6,14 @@ import {
   type ChallengePacket,
   type ChallengePlayer,
   type ChallengeResponse,
+  type RosterRule,
 } from "../../src/shared/contracts";
 import { fixturePlayers } from "../fixtures/players";
 import { randomId, sha256, stableStringify } from "../lib/crypto";
 import { apiAction } from "../lib/http";
 import type { ChallengeRecord, RunRecord, TeamRecord } from "../types";
 import { one, transaction, type Database } from "../db/postgres";
-import { getChallengePlayers } from "./provider";
+import { getChallengePlayers, getChallengeRoster } from "./provider";
 import type { Env } from "../types";
 
 export interface CreateChallengeInput {
@@ -23,12 +24,14 @@ export interface CreateChallengeInput {
   deadlineAt: string;
   firstGameAt: string;
   players?: ChallengePlayer[];
+  roster?: readonly RosterRule[];
 }
 
 export async function refreshChallenge(db: Database, env: Env, challenge: ChallengeRecord) {
   const runs = await one<{ count: number }>(db, "SELECT COUNT(*)::int AS count FROM runs WHERE challenge_id = $1", [challenge.id]);
   if ((runs?.count ?? 0) > 0) throw new Error("Challenge cannot be refreshed after runs have been delivered.");
   const players = await getChallengePlayers(env, challenge.season, challenge.week, challenge.id, challenge.first_game_at);
+  const roster = await getChallengeRoster(env, challenge.season, challenge.week);
   const packetWithoutHash = {
     challengeId: challenge.id,
     season: challenge.season,
@@ -37,7 +40,7 @@ export async function refreshChallenge(db: Database, env: Env, challenge: Challe
     deadlineAt: challenge.deadline_at,
     firstGameAt: challenge.first_game_at,
     salaryCap: SALARY_CAP,
-    roster: ROSTER_RULES,
+    roster,
     players,
     submissionSchema: LINEUP_SUBMISSION_SCHEMA,
     generatedAt: new Date().toISOString(),
@@ -79,7 +82,7 @@ export async function createChallenge(
     deadlineAt: input.deadlineAt,
     firstGameAt: input.firstGameAt,
     salaryCap: SALARY_CAP,
-    roster: ROSTER_RULES,
+    roster: input.roster ?? ROSTER_RULES,
     players,
     submissionSchema: LINEUP_SUBMISSION_SCHEMA,
     generatedAt,

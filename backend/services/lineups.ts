@@ -6,6 +6,7 @@ import {
   SLOTS,
   type LineupEntry,
   type ValidationError,
+  type RosterRule,
 } from "../../src/shared/contracts";
 import { randomId, sha256, stableStringify } from "../lib/crypto";
 import { one, transaction, type Database } from "../db/postgres";
@@ -75,6 +76,7 @@ export function validateLineup(
   routeRunId: string,
   run: RunRecord,
   selections: SelectionRecord[],
+  roster: readonly RosterRule[] = ROSTER_RULES,
 ): { errors: ValidationError[]; totalCost: number; entries: Array<LineupEntry & SelectionRecord> } {
   const errors: ValidationError[] = [];
   if (parsed.protocolVersion !== PROTOCOL_VERSION) {
@@ -115,7 +117,7 @@ export function validateLineup(
     }
   }
 
-  for (const rule of ROSTER_RULES) {
+  for (const rule of roster) {
     const actual = parsed.lineup.filter((item) => item.slot === rule.slot).length;
     if (actual !== rule.count) {
       errors.push(error("SLOT_COUNT", `${rule.slot} requires ${rule.count}; received ${actual}.`));
@@ -198,7 +200,7 @@ export async function submitLineup(input: {
     "SELECT * FROM selections WHERE challenge_id = $1",
     [run.challenge_id],
   );
-  const validation = validateLineup(parsed.data, input.routeRunId, run, selections.rows);
+  const validation = validateLineup(parsed.data, input.routeRunId, run, selections.rows, challenge.packet.roster);
   const canonicalEntries = validation.entries
     .map((entry) => ({ selectionId: entry.selectionId, slot: entry.slot }))
     .sort((left, right) => left.slot.localeCompare(right.slot) || left.selectionId.localeCompare(right.selectionId));

@@ -1,6 +1,6 @@
 import { one, transaction } from "./db/postgres";
 import { createChallenge } from "./services/challenges";
-import { getChallengePlayers, getSeasonSchedule } from "./services/provider";
+import { getChallengePlayers, getChallengeRoster, getSeasonSchedule } from "./services/provider";
 import { syncChallengeScores } from "./services/scoring";
 import type { ChallengeRecord, Env } from "./types";
 
@@ -63,6 +63,7 @@ export async function reconcileChallengeSchedule(env: Env) {
     challengeId,
     nextWeek.firstGameAt,
   );
+  const roster = await getChallengeRoster(env, season, nextWeek.week);
   await createChallenge(env.DB, {
     id: challengeId,
     season,
@@ -71,6 +72,7 @@ export async function reconcileChallengeSchedule(env: Env) {
     deadlineAt,
     firstGameAt: nextWeek.firstGameAt,
     players,
+    roster,
   });
   return { created: true, challengeId };
 }

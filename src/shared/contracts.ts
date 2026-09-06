@@ -1,8 +1,9 @@
 export const PROTOCOL_VERSION = "1.0" as const;
 export const SALARY_CAP = 200 as const;
 
-export const SLOTS = ["QB", "RB", "WR", "TE", "FLEX", "DEF", "K"] as const;
+export const SLOTS = ["QB", "RB", "WR", "TE", "FLEX", "SFLEX", "DEF", "K"] as const;
 export type Slot = (typeof SLOTS)[number];
+export type RosterRule = { slot: Slot; count: number; eligiblePositions: string[] };
 
 export const ROSTER_RULES: ReadonlyArray<{
   slot: Slot;
@@ -14,12 +15,13 @@ export const ROSTER_RULES: ReadonlyArray<{
   { slot: "WR", count: 3, eligiblePositions: ["WR"] },
   { slot: "TE", count: 1, eligiblePositions: ["TE"] },
   { slot: "FLEX", count: 1, eligiblePositions: ["RB", "WR", "TE"] },
+  { slot: "SFLEX", count: 0, eligiblePositions: ["QB", "RB", "WR", "TE"] },
   { slot: "DEF", count: 1, eligiblePositions: ["DEF"] },
   { slot: "K", count: 0, eligiblePositions: ["K"] },
 ];
 
-export function eligibleSlots(position: string): Slot[] {
-  return ROSTER_RULES
+export function eligibleSlots(position: string, rules: readonly RosterRule[] = ROSTER_RULES): Slot[] {
+  return rules
     .filter((rule) => rule.eligiblePositions.includes(position))
     .map((rule) => rule.slot);
 }
@@ -45,7 +47,7 @@ export interface ChallengePacket {
   deadlineAt: string;
   firstGameAt: string;
   salaryCap: 200;
-  roster: typeof ROSTER_RULES;
+  roster: readonly RosterRule[];
   players: ChallengePlayer[];
   submissionSchema: Record<string, unknown>;
   generatedAt: string;
