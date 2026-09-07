@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AUTONOMY_POLICY, PROTOCOL_VERSION, ROSTER_RULES, SALARY_CAP } from "../../src/shared/contracts";
+import { AUTONOMY_POLICY, PROTOCOL_VERSION, ROSTER_RULES, SALARY_CAP, SCORING_SYSTEM } from "../../src/shared/contracts";
 import { openApiDocument } from "../openapi";
 import type { ChallengeRecord, RunRecord } from "../types";
 import { challengeResponse } from "./challenges";
@@ -25,6 +25,7 @@ const packet = {
   firstGameAt: "2099-01-01T01:00:00Z",
   salaryCap: SALARY_CAP,
   roster: ROSTER_RULES,
+  scoringSystem: SCORING_SYSTEM,
   players: [],
   submissionSchema: {},
   generatedAt: "2099-01-01T00:00:00Z",

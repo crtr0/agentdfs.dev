@@ -1,4 +1,4 @@
-import { eligibleSlots, ROSTER_RULES, type ChallengePlayer, type RosterRule, type Slot } from "../../src/shared/contracts";
+import { eligibleSlots, type ChallengePlayer } from "../../src/shared/contracts";
 import { fixturePlayers, FIXTURE_PLAYER_POOL } from "../fixtures/players";
 import type { Env } from "../types";
 
@@ -8,47 +8,21 @@ interface FantasyScheduleGame {
   game_date?: string | null;
   home_team?: string | null;
   away_team?: string | null;
+  winner?: string | null;
 }
 
-interface FantasyProjection extends Record<string, unknown> {
-  PlayerID?: number | null;
-  GlobalGameID?: number | null;
-  Name?: string | null;
-  Team?: string | null;
-  Opponent?: string | null;
-  Position?: string | null;
-  FantasyPosition?: string | null;
-  InjuryStatus?: string | null;
-  DateTime?: string | null;
+interface FantasyScore {
+  playerId?: number | string | null;
+  team?: string | null;
+  position?: string | null;
+  points?: number | string | null;
 }
 
-interface FantasySlatePlayer extends Record<string, unknown> {
-  PlayerID?: number | null;
-  OperatorPlayerName?: string | null;
-  OperatorPosition?: string | null;
-  OperatorRosterSlots?: Array<string | null> | null;
-  OperatorSalary?: number | null;
-  Team?: string | null;
-  RemovedByOperator?: boolean | null;
-  SlateGameID?: number | null;
-}
-
-interface FantasySlate extends Record<string, unknown> {
-  SlateID?: number | null;
-  Operator?: string | null;
-  OperatorName?: string | null;
-  OperatorStartTime?: string | null;
-  SalaryCap?: number | null;
-  RemovedByOperator?: boolean | null;
-  DfsSlateGames?: Array<Record<string, unknown>> | null;
-  DfsSlatePlayers?: FantasySlatePlayer[] | null;
-}
-
-interface FantasyScore extends Record<string, unknown> {
-  PlayerID?: number | null;
-  Team?: string | null;
-  Position?: string | null;
-  IsGameOver?: boolean | null;
+interface FantasyLeadersResponse {
+  season?: number | string;
+  format?: string;
+  week?: number | string;
+  players?: FantasyScore[];
 }
 
 interface FantasyNerdsScheduleResponse {
@@ -66,33 +40,7 @@ export interface ProviderScoreResult {
   allFinal: boolean;
 }
 
-export async function getChallengeRoster(env: Env, season: number, week: number): Promise<readonly RosterRule[]> {
-  if (env.USE_FIXTURES === "true" || !env.FANTASYNERDS_API_KEY) return ROSTER_RULES;
-  const listing = await providerFetchJson<Record<string, unknown>>(env, "/v1/nfl/dfs-slates");
-  const yahoo = ((listing.platforms as Record<string, unknown> | undefined)?.yahoo ?? []) as Array<Record<string, unknown>>;
-  const slate = yahoo.filter((candidate) => Number(candidate.season) === season && Number(candidate.week) === week)
-    .reduce<Record<string, unknown> | null>((best, candidate) => !best || Number(candidate.teams ?? 0) > Number(best.teams ?? 0) ? candidate : best, null);
-  if (!slate?.slateId) throw new Error(`No Yahoo DFS slate found for ${season} week ${week}`);
-  const dfs = await providerFetchJson<Record<string, unknown>>(env, `/v1/nfl/dfs?slateId=${encodeURIComponent(String(slate.slateId))}`);
-  const requirements = (dfs.roster_requirements ?? {}) as Record<string, unknown>;
-  const eligibility: Record<string, string[]> = { QB: ["QB"], RB: ["RB"], WR: ["WR"], TE: ["TE"], DEF: ["DEF"], K: ["K"], FLEX: ["RB", "WR", "TE"], SFLEX: ["QB", "RB", "WR", "TE"] };
-  return Object.entries(requirements).map(([slot, count]) => ({
-    slot: slot as Slot,
-    count: Number(count),
-    eligiblePositions: eligibility[slot] ?? [slot],
-  }));
-}
-
-const allowedPositions = new Set(["QB", "RB", "WR", "TE", "DEF", "K"]);
-
-async function providerFetch<T>(env: Env, path: string): Promise<T> {
-  if (!env.FANTASYNERDS_API_KEY) throw new Error("FANTASYNERDS_API_KEY is required");
-  const response = await fetch(`${env.FANTASYNERDS_BASE_URL || "https://api.fantasynerds.com"}${path}`, {
-    signal: AbortSignal.timeout(15_000),
-  });
-  if (!response.ok) throw new Error(`Fantasy Nerds ${response.status}: ${path}`);
-  return (await response.json()) as T;
-}
+const allowedPositions = new Set(["QB", "RB", "WR", "TE"]);
 
 async function providerFetchJson<T>(env: Env, path: string): Promise<T> {
   if (!env.FANTASYNERDS_API_KEY) throw new Error("FANTASYNERDS_API_KEY is required");
@@ -163,11 +111,11 @@ export async function getChallengePlayers(
 
   return entries.flatMap((entry, index) => {
     const rawPosition = String(entry.position ?? "").split(/[,/]/)[0].trim();
-    const position = rawPosition === "DST" ? "DEF" : rawPosition;
+    const position = rawPosition;
     const team = String(entry.team ?? entry.team_code ?? "");
     const game = games.find((candidate) => candidate.home_team === team || candidate.away_team === team);
     const opponent = String(entry.opponent ?? (game?.home_team === team ? game.away_team : game?.home_team) ?? "");
-    const providerId = entry.playerId ?? (position === "DEF" ? `def_${team}` : null);
+    const providerId = entry.playerId;
     const salary = Number(entry.salary ?? entry.yahoo_salary ?? entry.operator_salary ?? 0);
     const gameStartsAt = String(entry.game_date ?? game?.game_date ?? slate.slate_start ?? firstGameAt);
     if (!providerId || !entry.name || !team || !opponent || salary <= 0
@@ -199,11 +147,20 @@ export async function getWeekScores(env: Env, season: number, week: number): Pro
     return { points, allFinal: false };
   }
 
-  const games = await providerFetchJson<FantasyScore[]>(env, `/v1/nfl/leaders?week=${week}`);
-  const points = new Map<string, number>();
-  for (const game of games) {
-    const providerId = game.playerId ?? (game.position === "DEF" ? `def_${game.team}` : null);
-    if (providerId) points.set(`fantasynerds_${providerId}`, Number(game.points ?? game.proj_pts ?? 0));
+  const [leaders, scheduleResponse] = await Promise.all([
+    providerFetchJson<FantasyLeadersResponse>(env, `/v1/nfl/leaders?format=std&position=ALL&week=${week}`),
+    providerFetchJson<FantasyNerdsScheduleResponse>(env, "/v1/nfl/schedule"),
+  ]);
+  if (Number(leaders.season) !== season || Number(leaders.week) !== week || leaders.format !== "std") {
+    throw new Error(`Fantasy Nerds returned an unexpected leaders result for ${season} week ${week}`);
   }
-  return { points, allFinal: games.length > 0 && games.every((game) => game.IsGameOver === true) };
+
+  const points = new Map<string, number>();
+  for (const player of leaders.players ?? []) {
+    if (!player.playerId || !allowedPositions.has(player.position ?? "")) continue;
+    const total = Number(player.points);
+    if (Number.isFinite(total)) points.set(`fantasynerds_${player.playerId}`, total);
+  }
+  const games = (scheduleResponse.schedule ?? []).filter((game) => game.season === season && game.week === week);
+  return { points, allFinal: games.length > 0 && games.every((game) => Boolean(game.winner)) };
 }

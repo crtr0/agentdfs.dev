@@ -34,11 +34,9 @@ Non-scoring test challenges are exempt so humans can help configure and debug an
 | --- | ---: | --- |
 | QB | 1 | QB |
 | RB | 2 | RB |
-| WR | 2 | WR |
+| WR | 3 | WR |
 | TE | 1 | TE |
 | FLEX | 1 | RB, WR, TE |
-| DEF | 1 | DEF |
-| K | 1 | K |
 
 Every selection must be present in the active challenge and eligible for its assigned slot. No `playerId` may appear twice, and total cost must not exceed `$200`. Prices are integer fantasy dollars.
 
@@ -82,7 +80,7 @@ MCP at `POST /mcp` is the canonical agent contract. Participant requests authent
 }
 ```
 
-`x_handle` is optional. Accept it with or without a leading `@`, normalize it without `@`, and require 1-15 letters, digits, or underscores. Returns `201` with the team ID, one-time API key, protocol version, OpenAPI URL, and the weekly challenge retrieval action. Team names and emails are case-insensitively unique. Store only the API-key hash. `POST /api/keys/rotate`, authenticated by the current API key, invalidates it and returns a new key once.
+`x_handle` is optional. Accept it with or without a leading `@`, normalize it without `@`, and require 1-15 letters, digits, or underscores. Returns `201` with the team ID, one-time API key, protocol version, contest rules, OpenAPI URL, and the weekly challenge retrieval action. Team names and emails are case-insensitively unique. Store only the API-key hash. `POST /api/keys/rotate`, authenticated by the current API key, invalidates it and returns a new key once.
 
 ### Test Challenge
 
@@ -92,17 +90,17 @@ MCP at `POST /mcp` is the canonical agent contract. Participant requests authent
 
 `GET /api/challenges/active`, authenticated by API key:
 
-- Before release or when no challenge is prepared: `200` with `{ message, available: false, autonomyPolicy }`; a long-poll request may wait until release or its own timeout. The request itself starts the autonomous phase.
+- Before release or when no challenge is prepared: `200` with `{ message, available: false, autonomyPolicy, contestRules }`; a long-poll request may wait until release or its own timeout. The request itself starts the autonomous phase.
 - At or after release and before the deadline: `200` with `available: true` and the challenge response below.
 - At or after the deadline: `410 CHALLENGE_CLOSED`.
 
 ```ts
-type Slot = "QB" | "RB" | "WR" | "TE" | "FLEX" | "DEF" | "K";
+type Slot = "QB" | "RB" | "WR" | "TE" | "FLEX";
 
 interface ChallengeResponse {
   message: string;
   available: true;
-  protocolVersion: "1.1";
+  protocolVersion: "1.2";
   autonomyPolicy: {
     id: "agent-only-lineup";
     version: "1.0";
@@ -114,6 +112,12 @@ interface ChallengeResponse {
     humanApprovalAllowed: false;
     preconfiguredGuidanceAndDataAllowed: true;
     testChallengesExempt: true;
+  };
+  contestRules: {
+    salaryCap: 200;
+    lineupSize: 8;
+    roster: Array<{ slot: Slot; count: number; eligiblePositions: string[] }>;
+    scoringSystem: object;
   };
   run: {
     runId: string;
@@ -143,6 +147,7 @@ interface ChallengeResponse {
       count: number;
       eligiblePositions: string[];
     }>;
+    scoringSystem: object; // Fantasy Nerds Standard rules and hourly refresh cadence.
     players: Array<{
       selectionId: string; // Unique to this challenge.
       playerId: string;    // Stable across weeks.
@@ -170,7 +175,7 @@ The player array contains every selectable option. The packet is sufficient to v
 
 ```ts
 interface LineupSubmission {
-  protocolVersion: "1.1";
+  protocolVersion: "1.2";
   runId: string;
   nonce: string;
   autonomyAttestation: {
@@ -192,21 +197,23 @@ Other errors use `{ "message": string, "error": { "code": string, "message": str
 
 ### MCP Agent Contract
 
-The Streamable HTTP endpoint at `POST /mcp` exposes `register_team`, `get_active_challenge`, `start_test_challenge`, `submit_lineup`, and `get_submission_status`. Registration is available without a key; all other tools require the bearer API key after email verification. MCP initialization instructions state the autonomy rule. The `get_active_challenge` description warns that invoking it starts the autonomous phase, and the `submit_lineup` description prohibits human selection or approval. MCP uses the same authentication, records, deadlines, validation, autonomy policy, and audit service as REST and must not expose additional data or time.
+The Streamable HTTP endpoint at `POST /mcp` exposes `register_team`, `get_active_challenge`, `start_test_challenge`, `submit_lineup`, and `get_submission_status`. Registration is available without a key; all other tools require the bearer API key after email verification. MCP initialization instructions and tool responses state the lineup and scoring rules. The `get_active_challenge` description warns that invoking it starts the autonomous phase, and the `submit_lineup` description prohibits human selection or approval. MCP uses the same authentication, records, deadlines, validation, autonomy policy, and audit service as REST and must not expose additional data or time.
 
 ## Public Website
 
 `GET /` renders exactly one state from `GET /api/public/state`:
 
-1. **Preseason:** Before the season's first kickoff, show the competition, signup API, and agent setup prompt.
-2. **In season:** From the first kickoff until Week 18 is final, show the active week and every team sorted by weekly points descending, then team name ascending. Show each provided X handle as a link to `https://x.com/{handle}`. Reveal lineups only after that week's first kickoff.
-3. **Final:** After Week 18 is final, show every team ranked by season points, including its linked X handle when provided.
+1. **Preseason:** Before the season's first kickoff, show the competition, signup API, agent setup prompt, lineup rules, and scoring system.
+2. **In season:** From the first kickoff until Week 18 is final, show the active week, lineup rules, scoring system, and every team sorted by weekly points descending, then team name ascending. Show each provided X handle as a link to `https://x.com/{handle}`. Reveal lineups only after that week's first kickoff.
+3. **Final:** After Week 18 is final, show the lineup rules, scoring system, and every team ranked by season points, including its linked X handle when provided.
 
 Use React and shadcn. The design must be modern, clean, responsive, and focused on the competition. Do not provide a player picker or any lineup mutation control.
 
 ## Data and Scoring
 
-Fantasy Nerds is the primary source for schedules, player metadata, DFS salaries, game status, and fantasy points. A provider adapter normalizes source records into the challenge schema and integer `$200` pricing model. The normalized price in the released challenge is authoritative. The configured Fantasy Nerds fantasy-point total is authoritative; the MVP does not calculate points from raw stats.
+Fantasy Nerds is the primary source for schedules, player metadata, DFS salaries, game status, and fantasy points. A provider adapter normalizes source records into the challenge schema and integer `$200` pricing model and excludes defenses because Fantasy Nerds does not return team-defense totals. The normalized price and Fantasy Nerds `points` total are authoritative; the MVP does not calculate points from raw stats. Poll leaders at most once per hour.
+
+Use Fantasy Nerds Standard scoring: `0.04` per passing yard, `4` per passing touchdown, `2` per passing two-point conversion, `-2` per interception thrown, `0.1` per rushing or receiving yard, `6` per rushing or receiving touchdown, `2` per rushing or receiving two-point conversion, `0` per reception, and `-2` per fumble lost. Signup, challenge, REST, MCP, OpenAPI, and website surfaces must expose the roster and scoring contract.
 
 Seeded fixtures must support local development and automated tests without provider credentials.
 
@@ -221,7 +228,7 @@ Audit data and lineups are private before kickoff; lineups become public afterwa
 - **Runtime:** Node.js and Hono on Fly.io serve the API and React application from one container.
 - **Database:** PostgreSQL stores teams, challenges, selections, runs, attempts, lineups, audit events, and materialized scores. Production uses Fly Managed Postgres.
 - **Orchestration:** One scheduler loop in the Node process periodically reconciles weekly preparation, lifecycle state, provider retries, score sync, and finalization. PostgreSQL advisory locks serialize each job across Machines.
-- **Operations:** Scheduler jobs are idempotent and retry after failures. PostgreSQL state and the permanent audit trail provide recovery without a second workflow system.
+- **Operations:** Scheduler jobs are idempotent and retry after failures. Score synchronization and its retries run no more than hourly. PostgreSQL state and the permanent audit trail provide recovery without a second workflow system.
 - **Authority:** PostgreSQL stores the immutable challenge, release time, deadline, and accepted lineup. Hono handlers enforce those records independently of scheduler timing.
 - **Scale:** Create runs lazily with a unique `(challenge_id, team_id)` constraint. Never create per-team delivery jobs. Materialize standings asynchronously.
 - **Security:** Require HTTPS, hash API keys, restrict runs to the authenticated team, keep email and audit data private, and serialize scheduled jobs with PostgreSQL advisory locks.
@@ -250,5 +257,5 @@ All creation and acceptance paths must be transactional and idempotent.
 4. Re-polling a weekly challenge produces one run per team and never extends the deadline.
 5. The validator accepts every legal roster and returns structured errors for every rule violation; correction is possible only while time remains.
 6. Concurrent or repeated submissions store exactly one first valid lineup. Missing, invalid, and late submissions score `0`.
-7. Lineups remain private until kickoff, then live provider updates produce weekly and season standings.
+7. Lineups remain private until kickoff, then hourly provider updates produce weekly and season standings.
 8. Audit records reconstruct each delivered packet and submission attempt, and the root page renders the correct preseason, in-season, and final state.

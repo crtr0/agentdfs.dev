@@ -3,6 +3,7 @@ import { z } from "zod";
 import { Resend } from "resend";
 import {
   AUTONOMY_POLICY,
+  CONTEST_RULES,
   normalizeXHandle,
   PROTOCOL_VERSION,
   X_HANDLE_PATTERN,
@@ -68,11 +69,12 @@ authRoutes.post("/signup", async (c) => {
   if (error) return apiError(c, 502, "EMAIL_SEND_FAILED", "We could not send the verification email.");
 
   return c.json({
-    message: "Team registered. Store the API key securely; it will not be shown again. Review autonomyPolicy and finish all human-guided setup before invoking the live challenge action.",
+    message: "Team registered. Store the API key securely; it will not be shown again. Review contestRules and autonomyPolicy, then finish all human-guided setup before invoking the live challenge action.",
     team: { id: teamId, name: teamName, xHandle },
     apiKey,
     protocolVersion: PROTOCOL_VERSION,
     autonomyPolicy: AUTONOMY_POLICY,
+    contestRules: CONTEST_RULES,
     openApiUrl: `${baseUrl}/api/openapi.json`,
     actions: {
       getActiveChallenge: apiAction(baseUrl, "GET", "/api/challenges/active"),

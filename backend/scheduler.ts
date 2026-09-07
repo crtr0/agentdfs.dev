@@ -1,6 +1,7 @@
+import { PROTOCOL_VERSION, SCORE_REFRESH_INTERVAL_SECONDS } from "../src/shared/contracts";
 import { one, transaction } from "./db/postgres";
-import { createChallenge } from "./services/challenges";
-import { getChallengePlayers, getChallengeRoster, getSeasonSchedule } from "./services/provider";
+import { createChallenge, refreshChallenge } from "./services/challenges";
+import { getChallengePlayers, getSeasonSchedule } from "./services/provider";
 import { syncChallengeScores } from "./services/scoring";
 import type { ChallengeRecord, Env } from "./types";
 
@@ -11,6 +12,7 @@ interface ScheduledJob {
   name: string;
   lockId: number;
   intervalMs: number;
+  retryIntervalMs?: number;
   nextRunAt: number;
   run: () => Promise<unknown>;
 }
@@ -46,8 +48,20 @@ export async function reconcileChallengeSchedule(env: Env) {
   if (!nextWeek) return { created: false };
 
   const challengeId = `challenge_${season}_${nextWeek.week}`;
-  const existing = await one(env.DB, "SELECT id FROM challenges WHERE id = $1", [challengeId]);
-  if (existing) return { created: false, challengeId };
+  const existing = await one<ChallengeRecord>(env.DB, "SELECT * FROM challenges WHERE id = $1", [challengeId]);
+  if (existing) {
+    const accepted = await one<{ count: number }>(env.DB,
+      "SELECT COUNT(*)::INTEGER AS count FROM lineups WHERE challenge_id = $1", [challengeId]);
+    if (
+      existing.protocol_version !== PROTOCOL_VERSION
+      && Date.parse(existing.first_game_at) > Date.now()
+      && (accepted?.count ?? 0) === 0
+    ) {
+      await refreshChallenge(env.DB, env, existing);
+      return { created: false, refreshed: true, challengeId };
+    }
+    return { created: false, challengeId };
+  }
 
   // A successfully fetched slate is authoritative and may be submitted immediately.
   // The provider snapshot is stored before the challenge is opened, so every team
@@ -63,7 +77,6 @@ export async function reconcileChallengeSchedule(env: Env) {
     challengeId,
     nextWeek.firstGameAt,
   );
-  const roster = await getChallengeRoster(env, season, nextWeek.week);
   await createChallenge(env.DB, {
     id: challengeId,
     season,
@@ -72,7 +85,6 @@ export async function reconcileChallengeSchedule(env: Env) {
     deadlineAt,
     firstGameAt: nextWeek.firstGameAt,
     players,
-    roster,
   });
   return { created: true, challengeId };
 }
@@ -134,7 +146,8 @@ export function startScheduler(env: Env) {
     {
       name: "score-sync",
       lockId: 3,
-      intervalMs: 5 * 60 * 1000,
+      intervalMs: SCORE_REFRESH_INTERVAL_SECONDS * 1000,
+      retryIntervalMs: SCORE_REFRESH_INTERVAL_SECONDS * 1000,
       nextRunAt: 0,
       run: () => reconcileScores(env),
     },
@@ -149,7 +162,7 @@ export function startScheduler(env: Env) {
       try {
         await withAdvisoryLock(env, job.lockId, job.run);
       } catch (error) {
-        job.nextRunAt = Date.now() + RETRY_INTERVAL_MS;
+        job.nextRunAt = Date.now() + (job.retryIntervalMs ?? RETRY_INTERVAL_MS);
         console.error(`Scheduled job ${job.name} failed`, error);
       }
     }

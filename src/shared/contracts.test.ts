@@ -2,17 +2,20 @@ import { describe, expect, it } from "vitest";
 import {
   AUTONOMY_POLICY,
   LINEUP_SUBMISSION_SCHEMA,
+  LINEUP_SIZE,
   normalizeXHandle,
   PROTOCOL_VERSION,
   ROSTER_RULES,
   SALARY_CAP,
+  SCORING_SYSTEM,
   SLOTS,
   X_HANDLE_PATTERN,
 } from "./contracts";
 
 describe("competition contract", () => {
-  it("defines exactly nine roster positions", () => {
-    expect(ROSTER_RULES.reduce((total, rule) => total + rule.count, 0)).toBe(9);
+  it("defines exactly eight offensive roster positions", () => {
+    expect(LINEUP_SIZE).toBe(8);
+    expect(ROSTER_RULES.reduce((total, rule) => total + rule.count, 0)).toBe(8);
   });
 
   it("limits FLEX to running backs, receivers, and tight ends", () => {
@@ -21,9 +24,10 @@ describe("competition contract", () => {
   });
 
   it("keeps the public protocol constants stable", () => {
-    expect(PROTOCOL_VERSION).toBe("1.1");
+    expect(PROTOCOL_VERSION).toBe("1.2");
     expect(SALARY_CAP).toBe(200);
-    expect(SLOTS).toEqual(["QB", "RB", "WR", "TE", "FLEX", "SFLEX", "DEF", "K"]);
+    expect(SLOTS).toEqual(["QB", "RB", "WR", "TE", "FLEX"]);
+    expect(SCORING_SYSTEM).toMatchObject({ format: "std", refreshIntervalSeconds: 3600 });
   });
 
   it("normalizes valid X handles", () => {

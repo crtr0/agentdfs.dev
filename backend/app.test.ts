@@ -5,7 +5,7 @@ import { newDb } from "pg-mem";
 import { describe, expect, it, vi } from "vitest";
 import { createApp } from "./app";
 import type { Env } from "./types";
-import { AUTONOMY_POLICY } from "../src/shared/contracts";
+import { AUTONOMY_POLICY, CONTEST_RULES } from "../src/shared/contracts";
 
 function application() {
   const memory = newDb({ autoCreateForeignKeyIndices: true });
@@ -45,11 +45,12 @@ describe("Node application", () => {
       body: JSON.stringify({ teamName: "Signup Test", email: "signup@example.test", x_handle: "@Signup_Test" }),
     }, env);
     expect(signup.status).toBe(201);
-    const signupBody = await signup.json() as { apiKey: string; autonomyPolicy: unknown; message: string; openApiUrl: string; team: { xHandle: string | null } };
+    const signupBody = await signup.json() as { apiKey: string; autonomyPolicy: unknown; contestRules: unknown; message: string; openApiUrl: string; team: { xHandle: string | null } };
     expect(signupBody).toMatchObject({
       message: expect.stringContaining("Team registered"),
       openApiUrl: "https://fantasy.example/api/openapi.json",
       autonomyPolicy: AUTONOMY_POLICY,
+      contestRules: CONTEST_RULES,
       team: { xHandle: "Signup_Test" },
     });
 
@@ -65,6 +66,20 @@ describe("Node application", () => {
     expect(await unavailable.json()).toMatchObject({
       available: false,
       autonomyPolicy: AUTONOMY_POLICY,
+      contestRules: CONTEST_RULES,
+    });
+
+    const testChallenge = await app.request("/api/challenges/test", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${signupBody.apiKey}` },
+    }, env);
+    expect(testChallenge.status).toBe(201);
+    expect(await testChallenge.json()).toMatchObject({
+      contestRules: CONTEST_RULES,
+      challenge: {
+        roster: CONTEST_RULES.roster,
+        scoringSystem: CONTEST_RULES.scoringSystem,
+      },
     });
 
     env.SEASON_START_AT = "2020-01-01T00:00:00Z";

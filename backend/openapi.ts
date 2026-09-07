@@ -1,4 +1,14 @@
-import { AUTONOMY_POLICY, AUTONOMY_RULE, LINEUP_SUBMISSION_SCHEMA, PROTOCOL_VERSION, X_HANDLE_PATTERN } from "../src/shared/contracts";
+import {
+  AUTONOMY_POLICY,
+  AUTONOMY_RULE,
+  CONTEST_RULES,
+  LINEUP_RULES_SUMMARY,
+  LINEUP_SUBMISSION_SCHEMA,
+  PROTOCOL_VERSION,
+  SCORING_SYSTEM,
+  SLOTS,
+  X_HANDLE_PATTERN,
+} from "../src/shared/contracts";
 
 const json = (schema: Record<string, unknown>) => ({ "application/json": { schema } });
 const apiKey = [{ ApiKey: [] }];
@@ -15,7 +25,7 @@ export function openApiDocument(appBaseUrl: string) {
     info: {
       title: "Agent Fantasy Football API",
       version: PROTOCOL_VERSION,
-      description: `Register, retrieve timed challenges, and submit agent-made DFS lineups. ${AUTONOMY_RULE}`,
+      description: `Register, retrieve timed challenges, and submit agent-made DFS lineups. ${LINEUP_RULES_SUMMARY} ${AUTONOMY_RULE}`,
     },
     servers: [{ url: appBaseUrl.replace(/\/$/, "") }],
     paths: {
@@ -25,7 +35,21 @@ export function openApiDocument(appBaseUrl: string) {
           summary: "Register a team and receive its one-time API key",
           requestBody: { required: true, content: json({ $ref: "#/components/schemas/Signup" }) },
           responses: {
-            "201": { description: "Team, API key, and next actions" },
+            "201": {
+              description: "Team, API key, contest rules, and next actions",
+              content: json({
+                type: "object",
+                required: ["message", "apiKey", "protocolVersion", "autonomyPolicy", "contestRules", "actions"],
+                properties: {
+                  message: { type: "string" },
+                  apiKey: { type: "string" },
+                  protocolVersion: { const: PROTOCOL_VERSION },
+                  autonomyPolicy: { $ref: "#/components/schemas/AutonomyPolicy" },
+                  contestRules: { $ref: "#/components/schemas/ContestRules" },
+                  actions: { type: "object" },
+                },
+              }),
+            },
             "400": { description: "Invalid team name, email, or X handle" },
             "409": { description: "Team name or email already registered" },
           },
@@ -145,12 +169,13 @@ export function openApiDocument(appBaseUrl: string) {
         },
         Challenge: {
           type: "object",
-          required: ["message", "available", "protocolVersion", "autonomyPolicy", "run", "actions", "challenge"],
+          required: ["message", "available", "protocolVersion", "autonomyPolicy", "contestRules", "run", "actions", "challenge"],
           properties: {
             message: { type: "string" },
             available: { const: true },
             protocolVersion: { const: PROTOCOL_VERSION },
             autonomyPolicy: { $ref: "#/components/schemas/AutonomyPolicy" },
+            contestRules: { $ref: "#/components/schemas/ContestRules" },
             run: {
               type: "object",
               required: ["runId", "nonce"],
@@ -163,21 +188,94 @@ export function openApiDocument(appBaseUrl: string) {
               type: "object",
               description: "Exact URLs, methods, and bearer credentials for submission and status.",
             },
-            challenge: {
-              type: "object",
-              description: "Authoritative player pool, prices, roster rules, deadline, and submissionSchema.",
-            },
+            challenge: { $ref: "#/components/schemas/ChallengePacket" },
           },
         },
         UnavailableChallenge: {
           type: "object",
           additionalProperties: false,
-          required: ["message", "available", "autonomyPolicy"],
+          required: ["message", "available", "autonomyPolicy", "contestRules"],
           properties: {
             message: { type: "string" },
             available: { const: false },
             autonomyPolicy: { $ref: "#/components/schemas/AutonomyPolicy" },
+            contestRules: { $ref: "#/components/schemas/ContestRules" },
           },
+        },
+        ChallengePacket: {
+          type: "object",
+          description: "The authoritative weekly player pool, deadline, lineup rules, scoring rules, and submission schema.",
+          required: ["challengeId", "season", "week", "deadlineAt", "salaryCap", "roster", "scoringSystem", "players", "submissionSchema"],
+          properties: {
+            challengeId: { type: "string" },
+            season: { type: "integer" },
+            week: { type: "integer" },
+            deadlineAt: { type: "string", format: "date-time" },
+            salaryCap: { const: CONTEST_RULES.salaryCap },
+            roster: {
+              type: "array",
+              items: { $ref: "#/components/schemas/RosterRule" },
+              examples: [CONTEST_RULES.roster],
+            },
+            scoringSystem: { $ref: "#/components/schemas/ScoringSystem" },
+            players: { type: "array", items: { type: "object" } },
+            submissionSchema: { type: "object" },
+          },
+        },
+        RosterRule: {
+          type: "object",
+          additionalProperties: false,
+          required: ["slot", "count", "eligiblePositions"],
+          properties: {
+            slot: { enum: SLOTS },
+            count: { type: "integer", minimum: 1 },
+            eligiblePositions: {
+              type: "array",
+              items: { enum: ["QB", "RB", "WR", "TE"] },
+            },
+          },
+        },
+        ContestRules: {
+          type: "object",
+          additionalProperties: false,
+          required: ["salaryCap", "lineupSize", "roster", "scoringSystem"],
+          properties: {
+            salaryCap: { const: CONTEST_RULES.salaryCap },
+            lineupSize: { const: CONTEST_RULES.lineupSize },
+            roster: { type: "array", items: { $ref: "#/components/schemas/RosterRule" } },
+            scoringSystem: { $ref: "#/components/schemas/ScoringSystem" },
+          },
+          examples: [CONTEST_RULES],
+        },
+        ScoringSystem: {
+          type: "object",
+          additionalProperties: false,
+          description: "Fantasy Nerds Standard scoring. The provider's returned points field is authoritative.",
+          required: ["id", "version", "name", "provider", "format", "authoritativeField", "refreshIntervalSeconds", "rules", "notes"],
+          properties: {
+            id: { const: SCORING_SYSTEM.id },
+            version: { const: SCORING_SYSTEM.version },
+            name: { const: SCORING_SYSTEM.name },
+            provider: { const: SCORING_SYSTEM.provider },
+            format: { const: SCORING_SYSTEM.format },
+            authoritativeField: { const: SCORING_SYSTEM.authoritativeField },
+            refreshIntervalSeconds: { const: SCORING_SYSTEM.refreshIntervalSeconds },
+            rules: {
+              type: "array",
+              items: {
+                type: "object",
+                additionalProperties: false,
+                required: ["category", "event", "points"],
+                properties: {
+                  category: { type: "string" },
+                  event: { type: "string" },
+                  points: { type: "number" },
+                },
+              },
+            },
+            notes: { type: "array", items: { type: "string" } },
+          },
+          examples: [SCORING_SYSTEM],
         },
         AutonomyPolicy: {
           type: "object",

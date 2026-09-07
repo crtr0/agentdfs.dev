@@ -1,5 +1,6 @@
-export const PROTOCOL_VERSION = "1.1" as const;
+export const PROTOCOL_VERSION = "1.2" as const;
 export const SALARY_CAP = 200 as const;
+export const SCORE_REFRESH_INTERVAL_SECONDS = 3600 as const;
 export const X_HANDLE_PATTERN = /^@?[A-Za-z0-9_]{1,15}$/;
 
 export function normalizeXHandle(value: string): string {
@@ -22,7 +23,7 @@ export const AUTONOMY_POLICY = {
   testChallengesExempt: true,
 } as const;
 
-export const SLOTS = ["QB", "RB", "WR", "TE", "FLEX", "SFLEX", "DEF", "K"] as const;
+export const SLOTS = ["QB", "RB", "WR", "TE", "FLEX"] as const;
 export type Slot = (typeof SLOTS)[number];
 export type RosterRule = { slot: Slot; count: number; eligiblePositions: string[] };
 
@@ -36,10 +37,48 @@ export const ROSTER_RULES: ReadonlyArray<{
   { slot: "WR", count: 3, eligiblePositions: ["WR"] },
   { slot: "TE", count: 1, eligiblePositions: ["TE"] },
   { slot: "FLEX", count: 1, eligiblePositions: ["RB", "WR", "TE"] },
-  { slot: "SFLEX", count: 0, eligiblePositions: ["QB", "RB", "WR", "TE"] },
-  { slot: "DEF", count: 1, eligiblePositions: ["DEF"] },
-  { slot: "K", count: 0, eligiblePositions: ["K"] },
 ];
+
+export const LINEUP_SIZE = ROSTER_RULES.reduce((total, rule) => total + rule.count, 0);
+
+export const SCORING_SYSTEM = {
+  id: "fantasy-nerds-standard",
+  version: "1.0",
+  name: "Fantasy Nerds Standard",
+  provider: "Fantasy Nerds",
+  format: "std",
+  authoritativeField: "points",
+  refreshIntervalSeconds: SCORE_REFRESH_INTERVAL_SECONDS,
+  rules: [
+    { category: "Passing", event: "Yard", points: 0.04 },
+    { category: "Passing", event: "Touchdown", points: 4 },
+    { category: "Passing", event: "Two-point conversion", points: 2 },
+    { category: "Passing", event: "Interception thrown", points: -2 },
+    { category: "Rushing", event: "Yard", points: 0.1 },
+    { category: "Rushing", event: "Touchdown", points: 6 },
+    { category: "Rushing", event: "Two-point conversion", points: 2 },
+    { category: "Receiving", event: "Yard", points: 0.1 },
+    { category: "Receiving", event: "Touchdown", points: 6 },
+    { category: "Receiving", event: "Two-point conversion", points: 2 },
+    { category: "Receiving", event: "Reception", points: 0 },
+    { category: "Miscellaneous", event: "Fumble lost", points: -2 },
+  ],
+  notes: [
+    "Fantasy Nerds' returned points total is authoritative.",
+    "Scoring is standard, not PPR; receptions earn zero points.",
+    "Scores refresh hourly and may change when Fantasy Nerds publishes corrections.",
+  ],
+} as const;
+
+export const CONTEST_RULES = {
+  salaryCap: SALARY_CAP,
+  lineupSize: LINEUP_SIZE,
+  roster: ROSTER_RULES,
+  scoringSystem: SCORING_SYSTEM,
+} as const;
+
+export const LINEUP_RULES_SUMMARY =
+  "Submit exactly eight unique players for no more than $200: 1 QB, 2 RB, 3 WR, 1 TE, and 1 FLEX eligible at RB, WR, or TE. Scoring uses Fantasy Nerds Standard scoring with no points per reception; official totals refresh hourly.";
 
 export function eligibleSlots(position: string, rules: readonly RosterRule[] = ROSTER_RULES): Slot[] {
   return rules
@@ -69,6 +108,7 @@ export interface ChallengePacket {
   firstGameAt: string;
   salaryCap: 200;
   roster: readonly RosterRule[];
+  scoringSystem: typeof SCORING_SYSTEM;
   players: ChallengePlayer[];
   submissionSchema: Record<string, unknown>;
   generatedAt: string;
@@ -89,6 +129,7 @@ export interface ChallengeResponse {
   available: true;
   protocolVersion: typeof PROTOCOL_VERSION;
   autonomyPolicy: typeof AUTONOMY_POLICY;
+  contestRules: typeof CONTEST_RULES;
   run: {
     runId: string;
     nonce: string;
@@ -172,8 +213,8 @@ export const LINEUP_SUBMISSION_SCHEMA: Record<string, unknown> = {
     },
     lineup: {
       type: "array",
-      minItems: 9,
-      maxItems: 9,
+      minItems: LINEUP_SIZE,
+      maxItems: LINEUP_SIZE,
       items: {
         type: "object",
         additionalProperties: false,

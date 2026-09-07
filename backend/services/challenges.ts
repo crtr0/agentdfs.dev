@@ -1,9 +1,11 @@
 import {
   AUTONOMY_POLICY,
+  CONTEST_RULES,
   LINEUP_SUBMISSION_SCHEMA,
   PROTOCOL_VERSION,
   ROSTER_RULES,
   SALARY_CAP,
+  SCORING_SYSTEM,
   type ChallengePacket,
   type ChallengePlayer,
   type ChallengeResponse,
@@ -14,7 +16,7 @@ import { randomId, sha256, stableStringify } from "../lib/crypto";
 import { apiAction } from "../lib/http";
 import type { ChallengeRecord, RunRecord, TeamRecord } from "../types";
 import { one, transaction, type Database } from "../db/postgres";
-import { getChallengePlayers, getChallengeRoster } from "./provider";
+import { getChallengePlayers } from "./provider";
 import type { Env } from "../types";
 
 export interface CreateChallengeInput {
@@ -30,7 +32,6 @@ export interface CreateChallengeInput {
 
 export async function refreshChallenge(db: Database, env: Env, challenge: ChallengeRecord) {
   const players = await getChallengePlayers(env, challenge.season, challenge.week, challenge.id, challenge.first_game_at);
-  const roster = await getChallengeRoster(env, challenge.season, challenge.week);
   const generatedAt = new Date().toISOString();
   const packetWithoutHash = {
     challengeId: challenge.id,
@@ -40,7 +41,8 @@ export async function refreshChallenge(db: Database, env: Env, challenge: Challe
     deadlineAt: challenge.deadline_at,
     firstGameAt: challenge.first_game_at,
     salaryCap: SALARY_CAP,
-    roster,
+    roster: ROSTER_RULES,
+    scoringSystem: SCORING_SYSTEM,
     players,
     submissionSchema: LINEUP_SUBMISSION_SCHEMA,
     generatedAt,
@@ -106,6 +108,7 @@ export async function createChallenge(
     firstGameAt: input.firstGameAt,
     salaryCap: SALARY_CAP,
     roster: input.roster ?? ROSTER_RULES,
+    scoringSystem: SCORING_SYSTEM,
     players,
     submissionSchema: LINEUP_SUBMISSION_SCHEMA,
     generatedAt,
@@ -205,6 +208,7 @@ export function challengeResponse(
     available: true,
     protocolVersion: PROTOCOL_VERSION,
     autonomyPolicy: AUTONOMY_POLICY,
+    contestRules: CONTEST_RULES,
     run: { runId: run.id, nonce: run.nonce },
     actions: {
       submitLineup: apiAction(appBaseUrl, "POST", `/api/runs/${run.id}/lineup`),

@@ -1,0 +1,44 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { Env } from "../types";
+import { getWeekScores } from "./provider";
+
+describe("Fantasy Nerds scoring", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("requests standard leaders and reads the players envelope", async () => {
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = new URL(String(input));
+      if (url.pathname.endsWith("/leaders")) {
+        return Response.json({
+          season: 2026,
+          week: 1,
+          format: "std",
+          players: [
+            { playerId: 1205, position: "QB", points: "38.76" },
+            { playerId: 9000, position: "LB", points: "12.00" },
+          ],
+        });
+      }
+      return Response.json({
+        schedule: [
+          { season: 2026, week: 1, winner: "SEA" },
+          { season: 2026, week: 1, winner: "BUF" },
+        ],
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await getWeekScores({
+      FANTASYNERDS_API_KEY: "test-key",
+      FANTASYNERDS_BASE_URL: "https://api.fantasynerds.test",
+    } as Env, 2026, 1);
+
+    const leadersUrl = new URL(String(fetchMock.mock.calls[0]?.[0]));
+    expect(leadersUrl.searchParams.get("format")).toBe("std");
+    expect(leadersUrl.searchParams.get("position")).toBe("ALL");
+    expect(leadersUrl.searchParams.get("week")).toBe("1");
+    expect(result.points.get("fantasynerds_1205")).toBe(38.76);
+    expect(result.points.has("fantasynerds_9000")).toBe(false);
+    expect(result.allFinal).toBe(true);
+  });
+});

@@ -11,7 +11,15 @@ import {
   Trophy,
   X,
 } from "lucide-react";
-import { AUTONOMY_RULE, type PublicStateResponse, type PublicTeamStanding } from "../shared/contracts";
+import {
+  AUTONOMY_RULE,
+  LINEUP_SIZE,
+  ROSTER_RULES,
+  SALARY_CAP,
+  SCORING_SYSTEM,
+  type PublicStateResponse,
+  type PublicTeamStanding,
+} from "../shared/contracts";
 import { Badge } from "./components/ui/badge";
 import { Button } from "./components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./components/ui/table";
@@ -57,6 +65,57 @@ function XHandleLink({ handle }: { handle: string | null }) {
       @{handle}
       <ExternalLink className="size-3" aria-hidden="true" />
     </a>
+  );
+}
+
+function ContestRules() {
+  return (
+    <section className="border-t border-neutral-300 bg-white/45">
+      <div className="mx-auto max-w-[1180px] px-5 py-12 sm:px-8 lg:py-16">
+        <p className="text-xs font-bold uppercase text-blue-700">Contest contract</p>
+        <h2 className="mt-2 text-2xl font-extrabold text-neutral-950">Lineup and scoring</h2>
+        <p className="mt-3 max-w-3xl text-sm leading-6 text-neutral-600">
+          Submit exactly {LINEUP_SIZE} unique players for no more than ${SALARY_CAP}. Fantasy Nerds Standard points are authoritative, use no reception bonus, and refresh hourly.
+        </p>
+        <div className="mt-8 grid gap-10 lg:grid-cols-[minmax(280px,.7fr)_minmax(0,1.3fr)]">
+          <div>
+            <h3 className="text-sm font-extrabold text-neutral-950">Valid lineup</h3>
+            <div className="mt-3 overflow-hidden rounded-[8px] border border-neutral-300 bg-white/60">
+              <Table>
+                <TableHeader><TableRow><TableHead>Slot</TableHead><TableHead className="text-center">Count</TableHead><TableHead>Eligible</TableHead></TableRow></TableHeader>
+                <TableBody>
+                  {ROSTER_RULES.map((rule) => (
+                    <TableRow key={rule.slot}>
+                      <TableCell className="font-mono font-bold text-blue-700">{rule.slot}</TableCell>
+                      <TableCell className="text-center font-mono">{rule.count}</TableCell>
+                      <TableCell>{rule.eligiblePositions.join(", ")}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+          <div>
+            <h3 className="text-sm font-extrabold text-neutral-950">{SCORING_SYSTEM.name}</h3>
+            <div className="mt-3 overflow-hidden rounded-[8px] border border-neutral-300 bg-white/60">
+              <Table>
+                <TableHeader><TableRow><TableHead>Category</TableHead><TableHead>Event</TableHead><TableHead className="text-right">Points</TableHead></TableRow></TableHeader>
+                <TableBody>
+                  {SCORING_SYSTEM.rules.map((rule) => (
+                    <TableRow key={`${rule.category}-${rule.event}`}>
+                      <TableCell className="font-semibold">{rule.category}</TableCell>
+                      <TableCell>{rule.event}</TableCell>
+                      <TableCell className="text-right font-mono">{rule.points > 0 ? "+" : ""}{rule.points}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+            <p className="mt-3 text-xs leading-5 text-neutral-500">Yard values apply per yard. All other values apply per occurrence. Provider corrections may change official totals.</p>
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -169,6 +228,7 @@ When ready, invoke get_active_challenge and autonomously choose, validate, and s
           </div>
         </div>
       </section>
+      <ContestRules />
     </main>
   );
 }
@@ -238,7 +298,8 @@ function Scoreboard({ state }: { state: PublicStateResponse }) {
   const [selected, setSelected] = useState<PublicTeamStanding | null>(null);
   const final = state.state === "final";
   return (
-    <main className="mx-auto max-w-[1180px] px-5 py-10 sm:px-8 sm:py-14">
+    <>
+      <main className="mx-auto max-w-[1180px] px-5 py-10 sm:px-8 sm:py-14">
       <div className="flex flex-col justify-between gap-6 sm:flex-row sm:items-end">
         <div>
           <Badge variant={final ? "final" : "active"}>
@@ -326,8 +387,10 @@ function Scoreboard({ state }: { state: PublicStateResponse }) {
           </Table>
         </div>
       </section>
-      {selected && state.activeWeek && <LineupModal team={selected} week={state.activeWeek} onClose={() => setSelected(null)} />}
-    </main>
+        {selected && state.activeWeek && <LineupModal team={selected} week={state.activeWeek} onClose={() => setSelected(null)} />}
+      </main>
+      <ContestRules />
+    </>
   );
 }
 

@@ -61,7 +61,6 @@ describe("PostgreSQL lineup acceptance", () => {
       selected(players, "p_wr_min", "WR"),
       selected(players, "p_te_buf", "TE"),
       selected(players, "p_rb_lar", "FLEX"),
-      selected(players, "p_def_nyj", "DEF"),
     ];
     const receivedAt = "2026-08-29T00:01:00.000Z";
     const body = JSON.stringify({
@@ -121,7 +120,7 @@ describe("PostgreSQL lineup acceptance", () => {
 
     for (const [table, expected] of [
       ["lineups", 1],
-      ["lineup_players", 9],
+      ["lineup_players", 8],
       ["attempts", 3],
       ["audit_events", 3],
     ] as const) {

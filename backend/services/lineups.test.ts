@@ -38,7 +38,6 @@ const selections = [
   selection("wr2", "receiver-two", "WR", 21),
   selection("wr3", "receiver-three", "WR", 20),
   selection("te", "tight-end", "TE", 18),
-  selection("def", "defense", "DEF", 11),
 ];
 
 const validLineup = [
@@ -50,7 +49,6 @@ const validLineup = [
   { selectionId: "wr3", slot: "WR" },
   { selectionId: "te", slot: "TE" },
   { selectionId: "rb3", slot: "FLEX" },
-  { selectionId: "def", slot: "DEF" },
 ] as Array<{ selectionId: string; slot: string }>;
 
 const autonomyAttestation = {
@@ -72,8 +70,8 @@ describe("lineup validation", () => {
   it("accepts a complete legal lineup", () => {
     const result = validate();
     expect(result.errors).toEqual([]);
-    expect(result.totalCost).toBe(192);
-    expect(result.entries).toHaveLength(9);
+    expect(result.totalCost).toBe(181);
+    expect(result.entries).toHaveLength(8);
   });
 
   it("reports an unknown selection", () => {

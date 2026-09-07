@@ -45,14 +45,6 @@ export const FIXTURE_PLAYER_POOL: FixturePlayer[] = [
   player("p_te_det", "Sam LaPorta", "DET", "GB", "TE", 22),
   player("p_te_ari", "Trey McBride", "ARI", "LAR", "TE", 21),
   player("p_te_buf", "Dalton Kincaid", "BUF", "MIA", "TE", 18),
-  player("p_def_cle", "Cleveland Browns", "CLE", "PIT", "DEF", 13),
-  player("p_def_sf", "San Francisco 49ers", "SF", "SEA", "DEF", 12),
-  player("p_def_bal", "Baltimore Ravens", "BAL", "CIN", "DEF", 11),
-  player("p_def_nyj", "New York Jets", "NYJ", "NE", "DEF", 10),
-  player("p_k_bal", "Justin Tucker", "BAL", "CIN", "K", 10),
-  player("p_k_dal", "Brandon Aubrey", "DAL", "PHI", "K", 10),
-  player("p_k_kc", "Harrison Butker", "KC", "LV", "K", 9),
-  player("p_k_buf", "Tyler Bass", "BUF", "MIA", "K", 8),
 ];
 
 export function fixturePlayers(challengeId: string, firstGameAt: string): ChallengePlayer[] {
