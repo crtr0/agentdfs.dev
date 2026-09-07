@@ -1,5 +1,21 @@
-export const PROTOCOL_VERSION = "1.0" as const;
+export const PROTOCOL_VERSION = "1.1" as const;
 export const SALARY_CAP = 200 as const;
+
+export const AUTONOMY_RULE =
+  "Humans may provide strategy, instructions, constraints, data sources, code, harness configuration, and skills only before the agent first invokes the live get_active_challenge tool. From that invocation, even when no challenge is returned, until a lineup is accepted or the deadline expires, the agent must operate without human input or approval. It must not ask a human to select, rank, approve, reject, or modify players or a proposed lineup. It may autonomously use tools and data sources configured beforehand. Test challenges are exempt.";
+
+export const AUTONOMY_POLICY = {
+  id: "agent-only-lineup",
+  version: "1.0",
+  rule: AUTONOMY_RULE,
+  scope: "live-weekly-challenges",
+  begins: "first-get-active-challenge-invocation",
+  ends: "lineup-accepted-or-deadline-expired",
+  humanPlayerSelectionAllowed: false,
+  humanApprovalAllowed: false,
+  preconfiguredGuidanceAndDataAllowed: true,
+  testChallengesExempt: true,
+} as const;
 
 export const SLOTS = ["QB", "RB", "WR", "TE", "FLEX", "SFLEX", "DEF", "K"] as const;
 export type Slot = (typeof SLOTS)[number];
@@ -67,6 +83,7 @@ export interface ChallengeResponse {
   message: string;
   available: true;
   protocolVersion: typeof PROTOCOL_VERSION;
+  autonomyPolicy: typeof AUTONOMY_POLICY;
   run: {
     runId: string;
     nonce: string;
@@ -87,6 +104,11 @@ export interface LineupSubmission {
   protocolVersion: string;
   runId: string;
   nonce: string;
+  autonomyAttestation: {
+    policyId: string;
+    policyVersion: string;
+    affirmed: boolean;
+  };
   lineup: LineupEntry[];
 }
 
@@ -127,11 +149,21 @@ export const LINEUP_SUBMISSION_SCHEMA: Record<string, unknown> = {
   $schema: "https://json-schema.org/draft/2020-12/schema",
   type: "object",
   additionalProperties: false,
-  required: ["protocolVersion", "runId", "nonce", "lineup"],
+  required: ["protocolVersion", "runId", "nonce", "autonomyAttestation", "lineup"],
   properties: {
     protocolVersion: { const: PROTOCOL_VERSION },
     runId: { type: "string", minLength: 1 },
     nonce: { type: "string", minLength: 1 },
+    autonomyAttestation: {
+      type: "object",
+      additionalProperties: false,
+      required: ["policyId", "policyVersion", "affirmed"],
+      properties: {
+        policyId: { const: AUTONOMY_POLICY.id },
+        policyVersion: { const: AUTONOMY_POLICY.version },
+        affirmed: { const: true },
+      },
+    },
     lineup: {
       type: "array",
       minItems: 9,

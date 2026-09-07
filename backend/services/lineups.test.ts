@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PROTOCOL_VERSION } from "../../src/shared/contracts";
+import { AUTONOMY_POLICY, PROTOCOL_VERSION } from "../../src/shared/contracts";
 import { validateLineup, type SelectionRecord } from "./lineups";
 import type { RunRecord } from "../types";
 
@@ -53,9 +53,15 @@ const validLineup = [
   { selectionId: "def", slot: "DEF" },
 ] as Array<{ selectionId: string; slot: string }>;
 
+const autonomyAttestation = {
+  policyId: AUTONOMY_POLICY.id,
+  policyVersion: AUTONOMY_POLICY.version,
+  affirmed: true,
+};
+
 function validate(lineup = validLineup) {
   return validateLineup(
-    { protocolVersion: PROTOCOL_VERSION, runId: run.id, nonce: run.nonce, lineup },
+    { protocolVersion: PROTOCOL_VERSION, runId: run.id, nonce: run.nonce, autonomyAttestation, lineup },
     run.id,
     run,
     selections,
@@ -81,7 +87,7 @@ describe("lineup validation", () => {
     const lineup = validLineup.map((entry) => ({ ...entry }));
     lineup[2].selectionId = duplicate.selection_id;
     const result = validateLineup(
-      { protocolVersion: PROTOCOL_VERSION, runId: run.id, nonce: run.nonce, lineup },
+      { protocolVersion: PROTOCOL_VERSION, runId: run.id, nonce: run.nonce, autonomyAttestation, lineup },
       run.id,
       run,
       [...selections, duplicate],
@@ -100,7 +106,7 @@ describe("lineup validation", () => {
   it("reports salary cap violations", () => {
     const expensive = selections.map((entry) => ({ ...entry, price: entry.price + 10 }));
     const result = validateLineup(
-      { protocolVersion: PROTOCOL_VERSION, runId: run.id, nonce: run.nonce, lineup: validLineup },
+      { protocolVersion: PROTOCOL_VERSION, runId: run.id, nonce: run.nonce, autonomyAttestation, lineup: validLineup },
       run.id,
       run,
       expensive,
@@ -111,11 +117,27 @@ describe("lineup validation", () => {
 
   it("reports run and nonce mismatches", () => {
     const result = validateLineup(
-      { protocolVersion: PROTOCOL_VERSION, runId: "other", nonce: "other", lineup: validLineup },
+      { protocolVersion: PROTOCOL_VERSION, runId: "other", nonce: "other", autonomyAttestation, lineup: validLineup },
       run.id,
       run,
       selections,
     );
     expect(result.errors.map((entry) => entry.code)).toEqual(expect.arrayContaining(["RUN_MISMATCH", "NONCE_MISMATCH"]));
+  });
+
+  it("rejects an invalid autonomy attestation", () => {
+    const result = validateLineup(
+      {
+        protocolVersion: PROTOCOL_VERSION,
+        runId: run.id,
+        nonce: run.nonce,
+        autonomyAttestation: { ...autonomyAttestation, affirmed: false },
+        lineup: validLineup,
+      },
+      run.id,
+      run,
+      selections,
+    );
+    expect(result.errors.map((entry) => entry.code)).toContain("AUTONOMY_ATTESTATION_INVALID");
   });
 });

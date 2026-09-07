@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { Resend } from "resend";
-import { PROTOCOL_VERSION } from "../../src/shared/contracts";
+import { AUTONOMY_POLICY, PROTOCOL_VERSION } from "../../src/shared/contracts";
 import { randomId, randomSecret, sha256 } from "../lib/crypto";
 import { apiAction, apiError, normalizeIdentity } from "../lib/http";
 import { requireApiKey } from "../middleware/auth";
@@ -61,10 +61,11 @@ authRoutes.post("/signup", async (c) => {
   if (error) return apiError(c, 502, "EMAIL_SEND_FAILED", "We could not send the verification email.");
 
   return c.json({
-    message: "Team registered. Store the API key securely; it will not be shown again.",
+    message: "Team registered. Store the API key securely; it will not be shown again. Review autonomyPolicy and finish all human-guided setup before invoking the live challenge action.",
     team: { id: teamId, name: teamName },
     apiKey,
     protocolVersion: PROTOCOL_VERSION,
+    autonomyPolicy: AUTONOMY_POLICY,
     openApiUrl: `${baseUrl}/api/openapi.json`,
     actions: {
       getActiveChallenge: apiAction(baseUrl, "GET", "/api/challenges/active"),

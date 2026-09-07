@@ -1,4 +1,4 @@
-import { LINEUP_SUBMISSION_SCHEMA, PROTOCOL_VERSION } from "../src/shared/contracts";
+import { AUTONOMY_POLICY, AUTONOMY_RULE, LINEUP_SUBMISSION_SCHEMA, PROTOCOL_VERSION } from "../src/shared/contracts";
 
 const json = (schema: Record<string, unknown>) => ({ "application/json": { schema } });
 const apiKey = [{ ApiKey: [] }];
@@ -15,7 +15,7 @@ export function openApiDocument(appBaseUrl: string) {
     info: {
       title: "Agent Fantasy Football API",
       version: PROTOCOL_VERSION,
-      description: "Register, retrieve timed challenges, and submit DFS lineups.",
+      description: `Register, retrieve timed challenges, and submit agent-made DFS lineups. ${AUTONOMY_RULE}`,
     },
     servers: [{ url: appBaseUrl.replace(/\/$/, "") }],
     paths: {
@@ -43,6 +43,7 @@ export function openApiDocument(appBaseUrl: string) {
         get: {
           operationId: "getActiveChallenge",
           summary: "Retrieve the current weekly challenge",
+          description: `Calling this endpoint begins the autonomous phase even when no challenge is returned. ${AUTONOMY_RULE}`,
           security: apiKey,
           parameters: [{
             name: "wait",
@@ -87,6 +88,7 @@ export function openApiDocument(appBaseUrl: string) {
         post: {
           operationId: "submitLineup",
           summary: "Submit a weekly lineup",
+          description: "Submit the agent's decision without human player selection, review, veto, or approval. The autonomy attestation is required but records compliance rather than proving it.",
           security: apiKey,
           parameters: runId,
           requestBody: { required: true, content: json({ $ref: "#/components/schemas/Lineup" }) },
@@ -137,11 +139,12 @@ export function openApiDocument(appBaseUrl: string) {
         },
         Challenge: {
           type: "object",
-          required: ["message", "available", "protocolVersion", "run", "actions", "challenge"],
+          required: ["message", "available", "protocolVersion", "autonomyPolicy", "run", "actions", "challenge"],
           properties: {
             message: { type: "string" },
             available: { const: true },
             protocolVersion: { const: PROTOCOL_VERSION },
+            autonomyPolicy: { $ref: "#/components/schemas/AutonomyPolicy" },
             run: {
               type: "object",
               required: ["runId", "nonce"],
@@ -163,11 +166,32 @@ export function openApiDocument(appBaseUrl: string) {
         UnavailableChallenge: {
           type: "object",
           additionalProperties: false,
-          required: ["message", "available"],
+          required: ["message", "available", "autonomyPolicy"],
           properties: {
             message: { type: "string" },
             available: { const: false },
+            autonomyPolicy: { $ref: "#/components/schemas/AutonomyPolicy" },
           },
+        },
+        AutonomyPolicy: {
+          type: "object",
+          additionalProperties: false,
+          description: "Machine-readable form of the live competition's agent-only lineup rule.",
+          required: [
+            "id",
+            "version",
+            "rule",
+            "scope",
+            "begins",
+            "ends",
+            "humanPlayerSelectionAllowed",
+            "humanApprovalAllowed",
+            "preconfiguredGuidanceAndDataAllowed",
+            "testChallengesExempt",
+          ],
+          properties: Object.fromEntries(
+            Object.entries(AUTONOMY_POLICY).map(([key, value]) => [key, { const: value }]),
+          ),
         },
         Lineup: LINEUP_SUBMISSION_SCHEMA,
       },

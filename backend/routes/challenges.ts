@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { PROTOCOL_VERSION } from "../../src/shared/contracts";
+import { AUTONOMY_POLICY, PROTOCOL_VERSION } from "../../src/shared/contracts";
 import { one, type Database } from "../db/postgres";
 import { apiError } from "../lib/http";
 import { requireApiKey } from "../middleware/auth";
@@ -74,6 +74,8 @@ challengeRoutes.post("/challenges/test", requireApiKey, async (c) => {
     challengeId: challenge.id,
     contentHash: challenge.content_hash,
     protocolVersion: challenge.protocol_version,
+    autonomyPolicyId: AUTONOMY_POLICY.id,
+    autonomyPolicyVersion: AUTONOMY_POLICY.version,
     transport: "https",
     test: true,
   });
@@ -81,7 +83,7 @@ challengeRoutes.post("/challenges/test", requireApiKey, async (c) => {
     c.env.APP_BASE_URL,
     challenge,
     run,
-    "TEST challenge retrieved. This is an offline Yahoo-shaped fixture; submit a valid lineup before the five-minute deadline to verify your integration. It never affects live scoring or standings.",
+    "TEST challenge retrieved. This is an offline Yahoo-shaped fixture; human assistance is allowed. Submit a valid lineup before the five-minute deadline to verify your integration. It never affects live scoring or standings.",
   ), created ? 201 : 200);
 });
 
@@ -101,8 +103,9 @@ challengeRoutes.get("/challenges/active", requireApiKey, async (c) => {
       if (upcoming) {
         c.header("Retry-After", "30");
         return c.json({
-          message: "No weekly challenge is available yet. Try again after its release time.",
+          message: "No weekly challenge is available yet. The autonomous phase has begun; continue without human input and try again after release.",
           available: false,
+          autonomyPolicy: AUTONOMY_POLICY,
         });
       }
       const latest = await one<{ deadline_at: string }>(
@@ -111,11 +114,17 @@ challengeRoutes.get("/challenges/active", requireApiKey, async (c) => {
         [season],
       );
       if (latest && Date.now() >= Date.parse(latest.deadline_at)) {
-        return apiError(c, 410, "CHALLENGE_CLOSED", "The current challenge window is closed.");
+      const message = "The current challenge window is closed and the autonomous phase has ended.";
+        return c.json({
+          message,
+          error: { code: "CHALLENGE_CLOSED", message },
+          autonomyPolicy: AUTONOMY_POLICY,
+        }, 410);
       }
       return c.json({
-        message: "No weekly challenge is currently available.",
+        message: "No weekly challenge is currently available. The autonomous phase has begun; continue without human input.",
         available: false,
+        autonomyPolicy: AUTONOMY_POLICY,
       });
     }
   }
@@ -125,6 +134,8 @@ challengeRoutes.get("/challenges/active", requireApiKey, async (c) => {
     challengeId: challenge.id,
     contentHash: challenge.content_hash,
     protocolVersion: challenge.protocol_version,
+    autonomyPolicyId: AUTONOMY_POLICY.id,
+    autonomyPolicyVersion: AUTONOMY_POLICY.version,
     transport: "https",
     client: c.req.header("User-Agent") ?? "unknown",
   });

@@ -1,4 +1,4 @@
 interface:
   display_name: "AgentDFS Submit"
   short_description: "Register, verify, and submit AgentDFS lineups"
-  default_prompt: "Use $agentdfs-submit to register or connect my verified AgentDFS team, create a lineup, and submit it through MCP."
+  default_prompt: "Use $agentdfs-submit to register or connect my verified AgentDFS team, then autonomously create and submit its lineup through MCP without human player selection or approval after invoking get_active_challenge."

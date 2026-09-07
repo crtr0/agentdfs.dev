@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  AUTONOMY_POLICY,
   PROTOCOL_VERSION,
   ROSTER_RULES,
   SALARY_CAP,
@@ -17,6 +18,11 @@ const submissionSchema = z.object({
   protocolVersion: z.string(),
   runId: z.string().min(1),
   nonce: z.string().min(1),
+  autonomyAttestation: z.object({
+    policyId: z.string().min(1),
+    policyVersion: z.string().min(1),
+    affirmed: z.boolean(),
+  }).strict(),
   lineup: z.array(z.object({
     selectionId: z.string().min(1),
     slot: z.string().min(1),
@@ -87,6 +93,16 @@ export function validateLineup(
   }
   if (parsed.nonce !== run.nonce) {
     errors.push(error("NONCE_MISMATCH", "The nonce does not match this run."));
+  }
+  if (
+    parsed.autonomyAttestation.policyId !== AUTONOMY_POLICY.id
+    || parsed.autonomyAttestation.policyVersion !== AUTONOMY_POLICY.version
+    || parsed.autonomyAttestation.affirmed !== true
+  ) {
+    errors.push(error(
+      "AUTONOMY_ATTESTATION_INVALID",
+      `The agent must affirm autonomy policy ${AUTONOMY_POLICY.id} version ${AUTONOMY_POLICY.version}.`,
+    ));
   }
 
   const selectionMap = new Map(selections.map((selection) => [selection.selection_id, selection]));
@@ -214,7 +230,11 @@ export async function submitLineup(input: {
   if (existing) {
     const status = existing.lineup_hash === lineupHash ? "idempotent" : "conflict";
     await recordAttempt(input.db, run.id, input.receivedAt, input.transport, payloadHash, status, []);
-    await appendAuditEvent(input.db, run.id, `submission.${status}`, { payloadHash, lineupHash });
+    await appendAuditEvent(input.db, run.id, `submission.${status}`, {
+      payloadHash,
+      lineupHash,
+      autonomyAttestation: parsed.data.autonomyAttestation,
+    });
     if (status === "idempotent") {
       return { status: 200, body: acceptedBody(run, existing, "This lineup was already accepted.") };
     }
@@ -244,6 +264,7 @@ export async function submitLineup(input: {
     await appendAuditEvent(input.db, run.id, "submission.invalid", {
       payloadHash,
       errors: validation.errors,
+      autonomyAttestation: parsed.data.autonomyAttestation,
     });
     return {
       status: 422,
@@ -299,7 +320,11 @@ export async function submitLineup(input: {
   );
   if (!accepted || accepted.lineup_hash !== lineupHash) {
     await recordAttempt(input.db, run.id, input.receivedAt, input.transport, payloadHash, "conflict", []);
-    await appendAuditEvent(input.db, run.id, "submission.conflict", { payloadHash, lineupHash });
+    await appendAuditEvent(input.db, run.id, "submission.conflict", {
+      payloadHash,
+      lineupHash,
+      autonomyAttestation: parsed.data.autonomyAttestation,
+    });
     const message = "This run already has an accepted lineup.";
     return {
       status: 409,
@@ -313,6 +338,7 @@ export async function submitLineup(input: {
     lineupHash,
     totalCost: validation.totalCost,
     transport: input.transport,
+    autonomyAttestation: parsed.data.autonomyAttestation,
   });
 
   return { status: 200, body: acceptedBody(run, accepted) };

@@ -1,4 +1,5 @@
 import {
+  AUTONOMY_POLICY,
   LINEUP_SUBMISSION_SCHEMA,
   PROTOCOL_VERSION,
   ROSTER_RULES,
@@ -197,12 +198,13 @@ export function challengeResponse(
   appBaseUrl: string,
   challenge: ChallengeRecord,
   run: RunRecord,
-  message = `Week ${challenge.week} challenge retrieved. Submit a valid lineup before the deadline.`,
+  message = `Week ${challenge.week} challenge retrieved. The autonomous phase is active; choose and submit a valid lineup before the deadline without human input or approval.`,
 ): ChallengeResponse {
   return {
     message,
     available: true,
     protocolVersion: PROTOCOL_VERSION,
+    autonomyPolicy: AUTONOMY_POLICY,
     run: { runId: run.id, nonce: run.nonce },
     actions: {
       submitLineup: apiAction(appBaseUrl, "POST", `/api/runs/${run.id}/lineup`),

@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import type { Pool } from "pg";
 import { newDb } from "pg-mem";
 import { describe, expect, it } from "vitest";
-import { PROTOCOL_VERSION, type ChallengePlayer } from "../../src/shared/contracts";
+import { AUTONOMY_POLICY, PROTOCOL_VERSION, type ChallengePlayer } from "../../src/shared/contracts";
 import { createChallenge, getOrCreateRun } from "./challenges";
 import { submitLineup } from "./lineups";
 import type { TeamRecord } from "../types";
@@ -67,6 +67,11 @@ describe("PostgreSQL lineup acceptance", () => {
       protocolVersion: PROTOCOL_VERSION,
       runId: run.id,
       nonce: run.nonce,
+      autonomyAttestation: {
+        policyId: AUTONOMY_POLICY.id,
+        policyVersion: AUTONOMY_POLICY.version,
+        affirmed: true,
+      },
       lineup,
     });
 
@@ -101,6 +106,11 @@ describe("PostgreSQL lineup acceptance", () => {
         protocolVersion: PROTOCOL_VERSION,
         runId: run.id,
         nonce: run.nonce,
+        autonomyAttestation: {
+          policyId: AUTONOMY_POLICY.id,
+          policyVersion: AUTONOMY_POLICY.version,
+          affirmed: true,
+        },
         lineup: competing,
       }),
       receivedAt,
@@ -117,6 +127,16 @@ describe("PostgreSQL lineup acceptance", () => {
       const count = await database.query<{ count: number }>(`SELECT COUNT(*)::INTEGER AS count FROM ${table}`);
       expect(count.rows[0]?.count).toBe(expected);
     }
+    const acceptedAudit = await database.query<{ metadata: Record<string, unknown> }>(
+      "SELECT metadata FROM audit_events WHERE event_type = 'submission.accepted'",
+    );
+    expect(acceptedAudit.rows[0]?.metadata).toMatchObject({
+      autonomyAttestation: {
+        policyId: AUTONOMY_POLICY.id,
+        policyVersion: AUTONOMY_POLICY.version,
+        affirmed: true,
+      },
+    });
     await database.end();
   });
 });

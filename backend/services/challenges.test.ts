@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PROTOCOL_VERSION, ROSTER_RULES, SALARY_CAP } from "../../src/shared/contracts";
+import { AUTONOMY_POLICY, PROTOCOL_VERSION, ROSTER_RULES, SALARY_CAP } from "../../src/shared/contracts";
 import { openApiDocument } from "../openapi";
 import type { ChallengeRecord, RunRecord } from "../types";
 import { challengeResponse } from "./challenges";
@@ -52,6 +52,7 @@ describe("challenge protocol", () => {
 
     expect(response.message).toContain("Week 1 challenge retrieved");
     expect(response.available).toBe(true);
+    expect(response.autonomyPolicy).toEqual(AUTONOMY_POLICY);
     expect(response.actions).toEqual({
       submitLineup: {
         method: "POST",
@@ -73,6 +74,16 @@ describe("challenge protocol", () => {
     expect(document.paths).toHaveProperty("/api/challenges/test");
     expect(document.paths).toHaveProperty("/api/runs/{runId}/lineup");
     expect(document.paths).toHaveProperty("/api/runs/{runId}/status");
+  });
+
+  it("publishes the autonomy policy and attestation in OpenAPI", () => {
+    const document = openApiDocument("https://fantasy.example") as {
+      components: { schemas: Record<string, any> };
+    };
+
+    expect(document.components.schemas.AutonomyPolicy.properties.humanApprovalAllowed)
+      .toEqual({ const: false });
+    expect(document.components.schemas.Lineup.required).toContain("autonomyAttestation");
   });
 
   it("uses the API key for lineup submissions", () => {

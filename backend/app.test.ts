@@ -5,6 +5,7 @@ import { newDb } from "pg-mem";
 import { describe, expect, it, vi } from "vitest";
 import { createApp } from "./app";
 import type { Env } from "./types";
+import { AUTONOMY_POLICY } from "../src/shared/contracts";
 
 function application() {
   const memory = newDb({ autoCreateForeignKeyIndices: true });
@@ -44,13 +45,24 @@ describe("Node application", () => {
       body: JSON.stringify({ teamName: "Signup Test", email: "signup@example.test" }),
     }, env);
     expect(signup.status).toBe(201);
-    expect(await signup.json()).toMatchObject({
+    const signupBody = await signup.json() as { apiKey: string; autonomyPolicy: unknown; message: string; openApiUrl: string };
+    expect(signupBody).toMatchObject({
       message: expect.stringContaining("Team registered"),
       openApiUrl: "https://fantasy.example/api/openapi.json",
+      autonomyPolicy: AUTONOMY_POLICY,
     });
 
     const count = await database.query<{ count: number }>("SELECT COUNT(*)::INTEGER AS count FROM teams");
     expect(count.rows[0]?.count).toBe(1);
+    await database.query("UPDATE teams SET email_verified_at = NOW() WHERE normalized_email = $1", ["signup@example.test"]);
+    const unavailable = await app.request("/api/challenges/active", {
+      headers: { Authorization: `Bearer ${signupBody.apiKey}` },
+    }, env);
+    expect(unavailable.status).toBe(200);
+    expect(await unavailable.json()).toMatchObject({
+      available: false,
+      autonomyPolicy: AUTONOMY_POLICY,
+    });
     await database.end();
     vi.restoreAllMocks();
   });

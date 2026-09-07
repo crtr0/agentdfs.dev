@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ROSTER_RULES, SALARY_CAP, SLOTS } from "./contracts";
+import { AUTONOMY_POLICY, LINEUP_SUBMISSION_SCHEMA, PROTOCOL_VERSION, ROSTER_RULES, SALARY_CAP, SLOTS } from "./contracts";
 
 describe("competition contract", () => {
   it("defines exactly nine roster positions", () => {
@@ -12,7 +12,18 @@ describe("competition contract", () => {
   });
 
   it("keeps the public protocol constants stable", () => {
+    expect(PROTOCOL_VERSION).toBe("1.1");
     expect(SALARY_CAP).toBe(200);
     expect(SLOTS).toEqual(["QB", "RB", "WR", "TE", "FLEX", "SFLEX", "DEF", "K"]);
+  });
+
+  it("defines the agent-only policy and requires its attestation", () => {
+    expect(AUTONOMY_POLICY).toMatchObject({
+      id: "agent-only-lineup",
+      humanPlayerSelectionAllowed: false,
+      humanApprovalAllowed: false,
+      testChallengesExempt: true,
+    });
+    expect(LINEUP_SUBMISSION_SCHEMA.required).toContain("autonomyAttestation");
   });
 });
