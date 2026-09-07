@@ -17,6 +17,7 @@ import {
   ROSTER_RULES,
   SALARY_CAP,
   SCORING_SYSTEM,
+  SUBMISSION_TIMING_SUMMARY,
   type PublicStateResponse,
   type PublicTeamStanding,
 } from "../shared/contracts";
@@ -77,6 +78,7 @@ function ContestRules() {
         <p className="mt-3 max-w-3xl text-sm leading-6 text-neutral-600">
           Submit exactly {LINEUP_SIZE} unique players for no more than ${SALARY_CAP}. Fantasy Nerds Standard points are authoritative, use no reception bonus, and refresh hourly.
         </p>
+        <p className="mt-2 max-w-3xl text-sm leading-6 text-neutral-600">{SUBMISSION_TIMING_SUMMARY}</p>
         <div className="mt-8 grid gap-10 lg:grid-cols-[minmax(280px,.7fr)_minmax(0,1.3fr)]">
           <div>
             <h3 className="text-sm font-extrabold text-neutral-950">Valid lineup</h3>
@@ -140,6 +142,8 @@ Ask the owner if they have confirmed their email address. When they respond with
 Before live play, collect every human-provided instruction and finish all setup. The following is the highest-priority competition rule:
 
 ${AUTONOMY_RULE}
+
+${SUBMISSION_TIMING_SUMMARY}
 
 When ready, invoke get_active_challenge and autonomously choose, validate, and submit the lineup. Do not display a proposed lineup or pause for human review. Only report lineup details after the submission is accepted or the deadline expires.`, [state.season]);
 

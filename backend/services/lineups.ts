@@ -191,8 +191,8 @@ export async function submitLineup(input: {
   if (Date.parse(input.receivedAt) >= Date.parse(run.deadline_at)) {
     await recordAttempt(input.db, run.id, input.receivedAt, input.transport, payloadHash, "late", []);
     await appendAuditEvent(input.db, run.id, "submission.late", { payloadHash, deadlineAt: run.deadline_at });
-    const message = "The submission deadline has passed.";
-    return { status: 410, body: { message, error: { code: "CHALLENGE_CLOSED", message } } };
+    const message = `This run's fixed 300-second submission window ended at ${run.deadline_at}.`;
+    return { status: 410, body: { message, error: { code: "RUN_DEADLINE_EXPIRED", message } } };
   }
 
   let body: unknown;

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Env } from "../types";
-import { getWeekScores } from "./provider";
+import { getChallengePlayers, getWeekScores } from "./provider";
 
 describe("Fantasy Nerds scoring", () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -40,5 +40,22 @@ describe("Fantasy Nerds scoring", () => {
     expect(result.points.get("fantasynerds_1205")).toBe(38.76);
     expect(result.points.has("fantasynerds_9000")).toBe(false);
     expect(result.allFinal).toBe(true);
+  });
+
+  it("does not publish an incomplete DFS slate", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
+      const path = new URL(String(input)).pathname;
+      if (path.endsWith("/dfs-slates")) {
+        return Response.json({ platforms: { yahoo: [{ season: 2026, week: 1, slateId: "slate_1" }] } });
+      }
+      if (path.endsWith("/dfs")) return Response.json({ players: [] });
+      return Response.json({ schedule: [] });
+    }));
+
+    await expect(getChallengePlayers({
+      FANTASYNERDS_API_KEY: "test-key",
+      FANTASYNERDS_BASE_URL: "https://api.fantasynerds.test",
+    } as Env, 2026, 1, "challenge_2026_1", "2026-09-10T00:00:00Z"))
+      .rejects.toThrow("incomplete Yahoo DFS slate");
   });
 });

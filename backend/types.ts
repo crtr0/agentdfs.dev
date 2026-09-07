@@ -10,7 +10,6 @@ export interface Env {
   CURRENT_SEASON: string;
   SEASON_START_AT: string;
   SEASON_END_AT: string;
-  CHALLENGE_WINDOW_SECONDS: string;
   FANTASYNERDS_API_KEY?: string;
   FANTASYNERDS_BASE_URL?: string;
   FANTASYNERDS_OPERATOR?: string;

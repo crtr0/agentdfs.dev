@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   AUTONOMY_POLICY,
+  CONTEST_RULES,
   LINEUP_SUBMISSION_SCHEMA,
   LINEUP_SIZE,
   normalizeXHandle,
@@ -24,10 +25,17 @@ describe("competition contract", () => {
   });
 
   it("keeps the public protocol constants stable", () => {
-    expect(PROTOCOL_VERSION).toBe("1.2");
+    expect(PROTOCOL_VERSION).toBe("1.4");
     expect(SALARY_CAP).toBe(200);
     expect(SLOTS).toEqual(["QB", "RB", "WR", "TE", "FLEX"]);
     expect(SCORING_SYSTEM).toMatchObject({ format: "std", refreshIntervalSeconds: 3600 });
+    expect(CONTEST_RULES.submissionTiming).toMatchObject({
+      challengeReleaseTrigger: "fantasy-nerds-slate-ingested",
+      personalWindowSeconds: 300,
+      latestEntryMinutesBeforeKickoff: 20,
+      globalDeadlineMinutesBeforeKickoff: 15,
+      repeatedRetrievalExtendsDeadline: false,
+    });
   });
 
   it("normalizes valid X handles", () => {

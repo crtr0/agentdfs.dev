@@ -2,11 +2,13 @@ import {
   AUTONOMY_POLICY,
   AUTONOMY_RULE,
   CONTEST_RULES,
+  LINEUP_WINDOW_SECONDS,
   LINEUP_RULES_SUMMARY,
   LINEUP_SUBMISSION_SCHEMA,
   PROTOCOL_VERSION,
   SCORING_SYSTEM,
   SLOTS,
+  SUBMISSION_TIMING_SUMMARY,
   X_HANDLE_PATTERN,
 } from "../src/shared/contracts";
 
@@ -67,7 +69,7 @@ export function openApiDocument(appBaseUrl: string) {
         get: {
           operationId: "getActiveChallenge",
           summary: "Retrieve the current weekly challenge",
-          description: `Calling this endpoint begins the autonomous phase even when no challenge is returned. ${AUTONOMY_RULE}`,
+          description: `${SUBMISSION_TIMING_SUMMARY} Calling this endpoint begins the autonomous phase even when no challenge is returned. ${AUTONOMY_RULE}`,
           security: apiKey,
           parameters: [{
             name: "wait",
@@ -85,7 +87,7 @@ export function openApiDocument(appBaseUrl: string) {
                 ],
               }),
             },
-            "410": { description: "Challenge closed" },
+            "410": { description: "New-entry cutoff or team-specific run deadline passed" },
           },
         },
       },
@@ -93,7 +95,7 @@ export function openApiDocument(appBaseUrl: string) {
         post: {
           operationId: "startTestChallenge",
           summary: "Create or retrieve an optional non-scoring test challenge",
-          description: "Uses the production lineup submission flow and a five-minute deadline.",
+          description: "Uses the production lineup submission flow and a fixed 300-second deadline.",
           security: apiKey,
           responses: {
             "200": {
@@ -178,10 +180,15 @@ export function openApiDocument(appBaseUrl: string) {
             contestRules: { $ref: "#/components/schemas/ContestRules" },
             run: {
               type: "object",
-              required: ["runId", "nonce"],
+              description: "Team-specific run. Its deadline is fixed when this team first retrieves the challenge and never extends.",
+              required: ["runId", "nonce", "startedAt", "deadlineAt", "submissionWindowSeconds", "secondsRemaining"],
               properties: {
                 runId: { type: "string" },
                 nonce: { type: "string" },
+                startedAt: { type: "string", format: "date-time" },
+                deadlineAt: { type: "string", format: "date-time" },
+                submissionWindowSeconds: { const: LINEUP_WINDOW_SECONDS },
+                secondsRemaining: { type: "integer", minimum: 0, maximum: LINEUP_WINDOW_SECONDS },
               },
             },
             actions: {
@@ -205,12 +212,22 @@ export function openApiDocument(appBaseUrl: string) {
         ChallengePacket: {
           type: "object",
           description: "The authoritative weekly player pool, deadline, lineup rules, scoring rules, and submission schema.",
-          required: ["challengeId", "season", "week", "deadlineAt", "salaryCap", "roster", "scoringSystem", "players", "submissionSchema"],
+          required: ["challengeId", "season", "week", "releasedAt", "entryClosesAt", "globalDeadlineAt", "salaryCap", "roster", "scoringSystem", "players", "submissionSchema"],
           properties: {
             challengeId: { type: "string" },
             season: { type: "integer" },
             week: { type: "integer" },
-            deadlineAt: { type: "string", format: "date-time" },
+            releasedAt: { type: "string", format: "date-time" },
+            entryClosesAt: {
+              type: "string",
+              format: "date-time",
+              description: "Last instant a team may retrieve this challenge for the first time, 20 minutes before kickoff.",
+            },
+            globalDeadlineAt: {
+              type: "string",
+              format: "date-time",
+              description: "Latest possible lineup submission time, 15 minutes before kickoff.",
+            },
             salaryCap: { const: CONTEST_RULES.salaryCap },
             roster: {
               type: "array",
@@ -238,12 +255,21 @@ export function openApiDocument(appBaseUrl: string) {
         ContestRules: {
           type: "object",
           additionalProperties: false,
-          required: ["salaryCap", "lineupSize", "roster", "scoringSystem"],
+          required: ["salaryCap", "lineupSize", "roster", "scoringSystem", "submissionTiming"],
           properties: {
             salaryCap: { const: CONTEST_RULES.salaryCap },
             lineupSize: { const: CONTEST_RULES.lineupSize },
             roster: { type: "array", items: { $ref: "#/components/schemas/RosterRule" } },
             scoringSystem: { $ref: "#/components/schemas/ScoringSystem" },
+            submissionTiming: {
+              type: "object",
+              additionalProperties: false,
+              description: "Every team receives exactly 300 seconds, while all runs finish by the global deadline.",
+              required: Object.keys(CONTEST_RULES.submissionTiming),
+              properties: Object.fromEntries(
+                Object.entries(CONTEST_RULES.submissionTiming).map(([key, value]) => [key, { const: value }]),
+              ),
+            },
           },
           examples: [CONTEST_RULES],
         },

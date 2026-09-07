@@ -1,5 +1,7 @@
-export const PROTOCOL_VERSION = "1.2" as const;
+export const PROTOCOL_VERSION = "1.4" as const;
 export const SALARY_CAP = 200 as const;
+export const LINEUP_WINDOW_SECONDS = 300 as const;
+export const GLOBAL_DEADLINE_MINUTES_BEFORE_KICKOFF = 15 as const;
 export const SCORE_REFRESH_INTERVAL_SECONDS = 3600 as const;
 export const X_HANDLE_PATTERN = /^@?[A-Za-z0-9_]{1,15}$/;
 
@@ -75,10 +77,22 @@ export const CONTEST_RULES = {
   lineupSize: LINEUP_SIZE,
   roster: ROSTER_RULES,
   scoringSystem: SCORING_SYSTEM,
+  submissionTiming: {
+    challengeReleaseTrigger: "fantasy-nerds-slate-ingested",
+    personalWindowSeconds: LINEUP_WINDOW_SECONDS,
+    globalDeadlineMinutesBeforeKickoff: GLOBAL_DEADLINE_MINUTES_BEFORE_KICKOFF,
+    latestEntryMinutesBeforeKickoff:
+      GLOBAL_DEADLINE_MINUTES_BEFORE_KICKOFF + LINEUP_WINDOW_SECONDS / 60,
+    clockStartsOnFirstRetrieval: true,
+    repeatedRetrievalExtendsDeadline: false,
+  },
 } as const;
 
 export const LINEUP_RULES_SUMMARY =
   "Submit exactly eight unique players for no more than $200: 1 QB, 2 RB, 3 WR, 1 TE, and 1 FLEX eligible at RB, WR, or TE. Scoring uses Fantasy Nerds Standard scoring with no points per reception; official totals refresh hourly.";
+
+export const SUBMISSION_TIMING_SUMMARY =
+  "The challenge becomes available as soon as the Fantasy Nerds slate is successfully ingested. The first successful challenge retrieval starts the team's fixed 300-second submission clock. Retrieving it again never extends the clock. New runs close 20 minutes before kickoff so every personal deadline occurs by the global deadline 15 minutes before kickoff.";
 
 export function eligibleSlots(position: string, rules: readonly RosterRule[] = ROSTER_RULES): Slot[] {
   return rules
@@ -104,7 +118,8 @@ export interface ChallengePacket {
   season: number;
   week: number;
   releasedAt: string;
-  deadlineAt: string;
+  entryClosesAt: string;
+  globalDeadlineAt: string;
   firstGameAt: string;
   salaryCap: 200;
   roster: readonly RosterRule[];
@@ -133,6 +148,10 @@ export interface ChallengeResponse {
   run: {
     runId: string;
     nonce: string;
+    startedAt: string;
+    deadlineAt: string;
+    submissionWindowSeconds: typeof LINEUP_WINDOW_SECONDS;
+    secondsRemaining: number;
   };
   actions: {
     submitLineup: RunAction;

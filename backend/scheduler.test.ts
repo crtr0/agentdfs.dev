@@ -20,8 +20,7 @@ function testEnvironment(): Env {
     CURRENT_SEASON: "2099",
     SEASON_START_AT: "2099-09-10T00:00:00Z",
     SEASON_END_AT: "2100-01-11T23:59:59Z",
-    CHALLENGE_WINDOW_SECONDS: "300",
-  FANTASYNERDS_BASE_URL: "https://api.fantasynerds.com",
+    FANTASYNERDS_BASE_URL: "https://api.fantasynerds.com",
     USE_FIXTURES: "true",
   };
 }
@@ -29,12 +28,20 @@ function testEnvironment(): Env {
 describe("application scheduler", () => {
   it("prepares the next challenge idempotently", async () => {
     const env = testEnvironment();
+    const beforeRelease = Date.now();
     await expect(reconcileChallengeSchedule(env)).resolves.toMatchObject({ created: true });
+    const afterRelease = Date.now();
     await expect(reconcileChallengeSchedule(env)).resolves.toMatchObject({ created: false });
     const count = await env.DB.query<{ count: number }>(
       "SELECT COUNT(*)::INTEGER AS count FROM challenges",
     );
     expect(count.rows[0]?.count).toBe(1);
+    const timing = await env.DB.query<{ released_at: string; deadline_at: string; first_game_at: string }>(
+      "SELECT released_at, deadline_at, first_game_at FROM challenges",
+    );
+    expect(Date.parse(timing.rows[0]!.released_at)).toBeGreaterThanOrEqual(beforeRelease - 1_000);
+    expect(Date.parse(timing.rows[0]!.released_at)).toBeLessThanOrEqual(afterRelease);
+    expect(Date.parse(timing.rows[0]!.first_game_at) - Date.parse(timing.rows[0]!.deadline_at)).toBe(15 * 60 * 1000);
     await env.DB.end();
   });
 

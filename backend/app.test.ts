@@ -5,7 +5,8 @@ import { newDb } from "pg-mem";
 import { describe, expect, it, vi } from "vitest";
 import { createApp } from "./app";
 import type { Env } from "./types";
-import { AUTONOMY_POLICY, CONTEST_RULES } from "../src/shared/contracts";
+import { AUTONOMY_POLICY, CONTEST_RULES, type ChallengeResponse } from "../src/shared/contracts";
+import { createChallenge } from "./services/challenges";
 
 function application() {
   const memory = newDb({ autoCreateForeignKeyIndices: true });
@@ -24,7 +25,6 @@ function application() {
     CURRENT_SEASON: "2026",
     SEASON_START_AT: "2026-09-10T00:00:00Z",
     SEASON_END_AT: "2027-01-11T23:59:59Z",
-    CHALLENGE_WINDOW_SECONDS: "300",
     FANTASYNERDS_BASE_URL: "https://api.fantasynerds.com",
     USE_FIXTURES: "true",
   };
@@ -66,6 +66,48 @@ describe("Node application", () => {
     expect(await unavailable.json()).toMatchObject({
       available: false,
       autonomyPolicy: AUTONOMY_POLICY,
+      contestRules: CONTEST_RULES,
+    });
+
+    const globalDeadlineAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+    await createChallenge(database, {
+      id: "challenge_2026_1",
+      season: 2026,
+      week: 1,
+      releasedAt: new Date(Date.now() - 60_000).toISOString(),
+      deadlineAt: globalDeadlineAt,
+      firstGameAt: new Date(Date.parse(globalDeadlineAt) + 15 * 60 * 1000).toISOString(),
+    });
+    const active = await app.request("/api/challenges/active", {
+      headers: { Authorization: `Bearer ${signupBody.apiKey}` },
+    }, env);
+    const activeBody = await active.json() as ChallengeResponse;
+    expect(activeBody.message).toContain("fixed 300-second clock");
+    expect(activeBody.challenge).toMatchObject({ globalDeadlineAt });
+    expect(Date.parse(activeBody.challenge.globalDeadlineAt) - Date.parse(activeBody.challenge.entryClosesAt)).toBe(300_000);
+    expect(Date.parse(activeBody.run.deadlineAt) - Date.parse(activeBody.run.startedAt)).toBe(300_000);
+    const repeated = await app.request("/api/challenges/active", {
+      headers: { Authorization: `Bearer ${signupBody.apiKey}` },
+    }, env);
+    expect(await repeated.json()).toMatchObject({
+      run: { runId: activeBody.run.runId, deadlineAt: activeBody.run.deadlineAt },
+    });
+
+    const lateGlobalDeadlineAt = new Date(Date.now() + 4 * 60 * 1000).toISOString();
+    await createChallenge(database, {
+      id: "challenge_2026_2",
+      season: 2026,
+      week: 2,
+      releasedAt: new Date(Date.now() - 60_000).toISOString(),
+      deadlineAt: lateGlobalDeadlineAt,
+      firstGameAt: new Date(Date.parse(lateGlobalDeadlineAt) + 15 * 60 * 1000).toISOString(),
+    });
+    const lateEntry = await app.request("/api/challenges/active", {
+      headers: { Authorization: `Bearer ${signupBody.apiKey}` },
+    }, env);
+    expect(lateEntry.status).toBe(410);
+    expect(await lateEntry.json()).toMatchObject({
+      error: { code: "CHALLENGE_ENTRY_CLOSED" },
       contestRules: CONTEST_RULES,
     });
 

@@ -1,6 +1,10 @@
-import { PROTOCOL_VERSION, SCORE_REFRESH_INTERVAL_SECONDS } from "../src/shared/contracts";
+import {
+  GLOBAL_DEADLINE_MINUTES_BEFORE_KICKOFF,
+  PROTOCOL_VERSION,
+  SCORE_REFRESH_INTERVAL_SECONDS,
+} from "../src/shared/contracts";
 import { one, transaction } from "./db/postgres";
-import { createChallenge, refreshChallenge } from "./services/challenges";
+import { createChallenge, entryClosesAt, refreshChallenge } from "./services/challenges";
 import { getChallengePlayers, getSeasonSchedule } from "./services/provider";
 import { syncChallengeScores } from "./services/scoring";
 import type { ChallengeRecord, Env } from "./types";
@@ -48,28 +52,35 @@ export async function reconcileChallengeSchedule(env: Env) {
   if (!nextWeek) return { created: false };
 
   const challengeId = `challenge_${season}_${nextWeek.week}`;
+  const deadlineAt = new Date(
+    Date.parse(nextWeek.firstGameAt) - GLOBAL_DEADLINE_MINUTES_BEFORE_KICKOFF * 60 * 1000,
+  ).toISOString();
+  if (Date.now() >= Date.parse(entryClosesAt(deadlineAt))) {
+    return { created: false, entryClosed: true, challengeId };
+  }
   const existing = await one<ChallengeRecord>(env.DB, "SELECT * FROM challenges WHERE id = $1", [challengeId]);
   if (existing) {
-    const accepted = await one<{ count: number }>(env.DB,
-      "SELECT COUNT(*)::INTEGER AS count FROM lineups WHERE challenge_id = $1", [challengeId]);
+    const issuedRuns = await one<{ count: number }>(env.DB,
+      "SELECT COUNT(*)::INTEGER AS count FROM runs WHERE challenge_id = $1", [challengeId]);
+    const protocolChanged = existing.protocol_version !== PROTOCOL_VERSION;
+    const timingChanged = existing.deadline_at !== deadlineAt;
     if (
-      existing.protocol_version !== PROTOCOL_VERSION
+      (protocolChanged || timingChanged)
       && Date.parse(existing.first_game_at) > Date.now()
-      && (accepted?.count ?? 0) === 0
+      && (issuedRuns?.count ?? 0) === 0
     ) {
-      await refreshChallenge(env.DB, env, existing);
+      await refreshChallenge(env.DB, env, {
+        ...existing,
+        released_at: protocolChanged ? new Date().toISOString() : existing.released_at,
+        deadline_at: deadlineAt,
+      });
       return { created: false, refreshed: true, challengeId };
     }
     return { created: false, challengeId };
   }
 
-  // A successfully fetched slate is authoritative and may be submitted immediately.
-  // The provider snapshot is stored before the challenge is opened, so every team
-  // receives the same immutable player pool and prices.
-  const releasedAt = new Date().toISOString();
-  const deadlineAt = new Date(
-    Date.parse(nextWeek.firstGameAt) - 15 * 60 * 1000,
-  ).toISOString();
+  // A successful provider fetch is the release event. Store one immutable
+  // snapshot so every team receives the same player pool and prices.
   const players = await getChallengePlayers(
     env,
     season,
@@ -77,6 +88,7 @@ export async function reconcileChallengeSchedule(env: Env) {
     challengeId,
     nextWeek.firstGameAt,
   );
+  const releasedAt = new Date().toISOString();
   await createChallenge(env.DB, {
     id: challengeId,
     season,

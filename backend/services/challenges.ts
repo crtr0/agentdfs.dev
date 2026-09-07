@@ -1,6 +1,7 @@
 import {
   AUTONOMY_POLICY,
   CONTEST_RULES,
+  LINEUP_WINDOW_SECONDS,
   LINEUP_SUBMISSION_SCHEMA,
   PROTOCOL_VERSION,
   ROSTER_RULES,
@@ -30,6 +31,10 @@ export interface CreateChallengeInput {
   roster?: readonly RosterRule[];
 }
 
+export function entryClosesAt(globalDeadlineAt: string): string {
+  return new Date(Date.parse(globalDeadlineAt) - LINEUP_WINDOW_SECONDS * 1000).toISOString();
+}
+
 export async function refreshChallenge(db: Database, env: Env, challenge: ChallengeRecord) {
   const players = await getChallengePlayers(env, challenge.season, challenge.week, challenge.id, challenge.first_game_at);
   const generatedAt = new Date().toISOString();
@@ -38,7 +43,8 @@ export async function refreshChallenge(db: Database, env: Env, challenge: Challe
     season: challenge.season,
     week: challenge.week,
     releasedAt: challenge.released_at,
-    deadlineAt: challenge.deadline_at,
+    entryClosesAt: entryClosesAt(challenge.deadline_at),
+    globalDeadlineAt: challenge.deadline_at,
     firstGameAt: challenge.first_game_at,
     salaryCap: SALARY_CAP,
     roster: ROSTER_RULES,
@@ -104,7 +110,8 @@ export async function createChallenge(
     season: input.season,
     week: input.week,
     releasedAt: input.releasedAt,
-    deadlineAt: input.deadlineAt,
+    entryClosesAt: entryClosesAt(input.deadlineAt),
+    globalDeadlineAt: input.deadlineAt,
     firstGameAt: input.firstGameAt,
     salaryCap: SALARY_CAP,
     roster: input.roster ?? ROSTER_RULES,
@@ -174,18 +181,21 @@ export async function getOrCreateRun(
   db: Database,
   challenge: ChallengeRecord,
   team: TeamRecord,
-  deadlineAt = challenge.deadline_at,
+  startedAt = new Date().toISOString(),
 ): Promise<RunRecord> {
   const runId = randomId("run");
   const nonce = randomId("nonce");
-  const deliveredAt = new Date().toISOString();
+  const deadlineAt = new Date(Math.min(
+    Date.parse(startedAt) + LINEUP_WINDOW_SECONDS * 1000,
+    Date.parse(challenge.deadline_at),
+  )).toISOString();
 
   await db.query(
     `INSERT INTO runs
       (id, challenge_id, team_id, nonce, deadline_at, status, first_delivered_at)
      VALUES ($1, $2, $3, $4, $5, 'delivered', $6)
      ON CONFLICT DO NOTHING`,
-    [runId, challenge.id, team.id, nonce, deadlineAt, deliveredAt],
+    [runId, challenge.id, team.id, nonce, deadlineAt, startedAt],
   );
 
   const run = await one<RunRecord>(
@@ -201,19 +211,30 @@ export function challengeResponse(
   appBaseUrl: string,
   challenge: ChallengeRecord,
   run: RunRecord,
-  message = `Week ${challenge.week} challenge retrieved. The autonomous phase is active; choose and submit a valid lineup before the deadline without human input or approval.`,
+  message?: string,
 ): ChallengeResponse {
+  const secondsRemaining = Math.min(
+    LINEUP_WINDOW_SECONDS,
+    Math.max(0, Math.ceil((Date.parse(run.deadline_at) - Date.now()) / 1000)),
+  );
   return {
-    message,
+    message: message ?? `Week ${challenge.week} challenge retrieved. Your fixed 300-second clock is active with ${secondsRemaining} seconds remaining. Submit a valid lineup by ${run.deadline_at}; retrieving the challenge again will not extend this deadline.`,
     available: true,
     protocolVersion: PROTOCOL_VERSION,
     autonomyPolicy: AUTONOMY_POLICY,
     contestRules: CONTEST_RULES,
-    run: { runId: run.id, nonce: run.nonce },
+    run: {
+      runId: run.id,
+      nonce: run.nonce,
+      startedAt: run.first_delivered_at,
+      deadlineAt: run.deadline_at,
+      submissionWindowSeconds: LINEUP_WINDOW_SECONDS,
+      secondsRemaining,
+    },
     actions: {
       submitLineup: apiAction(appBaseUrl, "POST", `/api/runs/${run.id}/lineup`),
       getStatus: apiAction(appBaseUrl, "GET", `/api/runs/${run.id}/status`),
     },
-    challenge: { ...challenge.packet, deadlineAt: run.deadline_at },
+    challenge: challenge.packet,
   };
 }

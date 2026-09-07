@@ -109,7 +109,7 @@ export async function getChallengePlayers(
   const entries = (dfs.players ?? dfs.data ?? []) as Array<Record<string, unknown>>;
   const games = (scheduleResponse.schedule ?? []).filter((game) => Number(game.week) === week);
 
-  return entries.flatMap((entry, index) => {
+  const players = entries.flatMap((entry, index) => {
     const rawPosition = String(entry.position ?? "").split(/[,/]/)[0].trim();
     const position = rawPosition;
     const team = String(entry.team ?? entry.team_code ?? "");
@@ -135,6 +135,13 @@ export async function getChallengePlayers(
       gameStartsAt: new Date(gameStartsAt).toISOString(),
     } satisfies ChallengePlayer];
   });
+  const positionCount = (position: string) => players.filter((player) => player.position === position).length;
+  const flexPoolSize = positionCount("RB") + positionCount("WR") + positionCount("TE");
+  if (positionCount("QB") < 1 || positionCount("RB") < 2 || positionCount("WR") < 3
+    || positionCount("TE") < 1 || flexPoolSize < 7) {
+    throw new Error(`Fantasy Nerds returned an incomplete Yahoo DFS slate for ${season} week ${week}`);
+  }
+  return players;
 }
 
 export async function getWeekScores(env: Env, season: number, week: number): Promise<ProviderScoreResult> {

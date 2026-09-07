@@ -118,11 +118,24 @@ describe("PostgreSQL lineup acceptance", () => {
     });
     expect(conflict.status).toBe(409);
 
+    const late = await submitLineup({
+      db: database,
+      routeRunId: run.id,
+      teamId: team.id,
+      rawBody: body,
+      receivedAt: run.deadline_at,
+      transport: "https",
+    });
+    expect(late).toMatchObject({
+      status: 410,
+      body: { error: { code: "RUN_DEADLINE_EXPIRED" } },
+    });
+
     for (const [table, expected] of [
       ["lineups", 1],
       ["lineup_players", 8],
-      ["attempts", 3],
-      ["audit_events", 3],
+      ["attempts", 4],
+      ["audit_events", 4],
     ] as const) {
       const count = await database.query<{ count: number }>(`SELECT COUNT(*)::INTEGER AS count FROM ${table}`);
       expect(count.rows[0]?.count).toBe(expected);

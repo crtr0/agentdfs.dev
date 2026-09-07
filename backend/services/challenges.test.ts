@@ -21,7 +21,8 @@ const packet = {
   season: 2026,
   week: 1,
   releasedAt: "2099-01-01T00:00:00Z",
-  deadlineAt: run.deadline_at,
+  entryClosesAt: "2099-01-01T00:00:00Z",
+  globalDeadlineAt: run.deadline_at,
   firstGameAt: "2099-01-01T01:00:00Z",
   salaryCap: SALARY_CAP,
   roster: ROSTER_RULES,
@@ -39,7 +40,7 @@ const challenge: ChallengeRecord = {
   status: "open",
   protocol_version: PROTOCOL_VERSION,
   released_at: packet.releasedAt,
-  deadline_at: packet.deadlineAt,
+  deadline_at: packet.globalDeadlineAt,
   first_game_at: packet.firstGameAt,
   salary_cap: SALARY_CAP,
   packet,
@@ -54,6 +55,12 @@ describe("challenge protocol", () => {
     expect(response.message).toContain("Week 1 challenge retrieved");
     expect(response.available).toBe(true);
     expect(response.autonomyPolicy).toEqual(AUTONOMY_POLICY);
+    expect(response.run).toMatchObject({
+      runId: run.id,
+      startedAt: run.first_delivered_at,
+      deadlineAt: run.deadline_at,
+      submissionWindowSeconds: 300,
+    });
     expect(response.actions).toEqual({
       submitLineup: {
         method: "POST",

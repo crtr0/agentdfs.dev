@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { AUTONOMY_POLICY, CONTEST_RULES, PROTOCOL_VERSION } from "../../src/shared/contracts";
+import { AUTONOMY_POLICY, CONTEST_RULES, LINEUP_WINDOW_SECONDS, PROTOCOL_VERSION } from "../../src/shared/contracts";
 import { one, type Database } from "../db/postgres";
 import { apiError } from "../lib/http";
 import { requireApiKey } from "../middleware/auth";
@@ -7,6 +7,7 @@ import { appendAuditEvent } from "../services/audit";
 import {
   challengeResponse,
   createChallenge,
+  entryClosesAt,
   getOrCreateRun,
 } from "../services/challenges";
 import { submitLineup } from "../services/lineups";
@@ -14,8 +15,7 @@ import type { AppVariables, AttemptRecord, ChallengeRecord, Env, RunRecord } fro
 
 export const challengeRoutes = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
-async function activeChallenge(db: Database, season: number): Promise<ChallengeRecord | null> {
-  const now = new Date().toISOString();
+async function activeChallenge(db: Database, season: number, now: string): Promise<ChallengeRecord | null> {
   return one<ChallengeRecord>(db,
     `SELECT * FROM challenges
      WHERE season = $1 AND released_at <= $2 AND deadline_at > $3
@@ -55,9 +55,7 @@ challengeRoutes.post("/challenges/test", requireApiKey, async (c) => {
   const created = !run;
   if (!run) {
     const releasedAt = now.toISOString();
-    const deadlineAt = new Date(
-      now.getTime() + Number(c.env.CHALLENGE_WINDOW_SECONDS || 300) * 1000,
-    ).toISOString();
+    const deadlineAt = new Date(now.getTime() + LINEUP_WINDOW_SECONDS * 1000).toISOString();
     if (challenge) await c.env.DB.query("DELETE FROM challenges WHERE id = $1", [challenge.id]);
     challenge = await createChallenge(c.env.DB, {
       id: challengeId,
@@ -67,7 +65,7 @@ challengeRoutes.post("/challenges/test", requireApiKey, async (c) => {
       deadlineAt,
       firstGameAt: deadlineAt,
     });
-    run = await getOrCreateRun(c.env.DB, challenge, team);
+    run = await getOrCreateRun(c.env.DB, challenge, team, releasedAt);
   }
   if (!challenge || !run) throw new Error("Test challenge creation failed");
   await appendAuditEvent(c.env.DB, run.id, created ? "challenge.delivered" : "challenge.redelivered", {
@@ -76,6 +74,7 @@ challengeRoutes.post("/challenges/test", requireApiKey, async (c) => {
     protocolVersion: challenge.protocol_version,
     autonomyPolicyId: AUTONOMY_POLICY.id,
     autonomyPolicyVersion: AUTONOMY_POLICY.version,
+    runDeadlineAt: run.deadline_at,
     transport: "https",
     test: true,
   });
@@ -83,21 +82,23 @@ challengeRoutes.post("/challenges/test", requireApiKey, async (c) => {
     c.env.APP_BASE_URL,
     challenge,
     run,
-    "TEST challenge retrieved. This is an offline fixture; human assistance is allowed. Submit the eight-player lineup described by contestRules before the five-minute deadline. It never affects live scoring or standings.",
+    `TEST challenge retrieved. This is an offline fixture; human assistance is allowed. Your fixed 300-second clock ends at ${run.deadline_at}. It never affects live scoring or standings.`,
   ), created ? 201 : 200);
 });
 
 challengeRoutes.get("/challenges/active", requireApiKey, async (c) => {
   const team = c.get("team");
   const season = Number(c.env.CURRENT_SEASON);
-  let challenge = await activeChallenge(c.env.DB, season);
+  let now = new Date().toISOString();
+  let challenge = await activeChallenge(c.env.DB, season, now);
   if (!challenge) {
     const upcoming = await upcomingChallenge(c.env.DB, season);
     const waitSeconds = Math.min(Math.max(Number(c.req.query("wait") ?? 0), 0), 25);
     if (upcoming && waitSeconds > 0) {
       const untilRelease = Date.parse(upcoming.released_at) - Date.now();
       await new Promise((resolve) => setTimeout(resolve, Math.min(waitSeconds * 1000, Math.max(untilRelease, 0))));
-      challenge = await activeChallenge(c.env.DB, season);
+      now = new Date().toISOString();
+      challenge = await activeChallenge(c.env.DB, season, now);
     }
     if (!challenge) {
       if (upcoming) {
@@ -115,7 +116,7 @@ challengeRoutes.get("/challenges/active", requireApiKey, async (c) => {
         [season],
       );
       if (latest && Date.now() >= Date.parse(latest.deadline_at)) {
-      const message = "The current challenge window is closed and the autonomous phase has ended.";
+        const message = "The current challenge window is closed and the autonomous phase has ended.";
         return c.json({
           message,
           error: { code: "CHALLENGE_CLOSED", message },
@@ -132,13 +133,37 @@ challengeRoutes.get("/challenges/active", requireApiKey, async (c) => {
     }
   }
 
-  const run = await getOrCreateRun(c.env.DB, challenge, team);
-  await appendAuditEvent(c.env.DB, run.id, "challenge.delivered", {
+  let run = await one<RunRecord>(c.env.DB,
+    "SELECT * FROM runs WHERE challenge_id = $1 AND team_id = $2", [challenge.id, team.id]);
+  const redelivered = Boolean(run);
+  if (run && run.status !== "accepted" && Date.parse(run.deadline_at) <= Date.parse(now)) {
+    await c.env.DB.query("UPDATE runs SET status = 'expired' WHERE id = $1", [run.id]);
+    const message = `Your 300-second submission window ended at ${run.deadline_at}. Retrieving the challenge again does not start a new clock.`;
+    return c.json({
+      message,
+      error: { code: "RUN_DEADLINE_EXPIRED", message },
+      autonomyPolicy: AUTONOMY_POLICY,
+      contestRules: CONTEST_RULES,
+      run: { runId: run.id, startedAt: run.first_delivered_at, deadlineAt: run.deadline_at },
+    }, 410);
+  }
+  if (!run && Date.parse(now) >= Date.parse(entryClosesAt(challenge.deadline_at))) {
+    const message = `New entries closed at ${entryClosesAt(challenge.deadline_at)} so every agent can receive a full 300 seconds before the global deadline at ${challenge.deadline_at}.`;
+    return c.json({
+      message,
+      error: { code: "CHALLENGE_ENTRY_CLOSED", message },
+      autonomyPolicy: AUTONOMY_POLICY,
+      contestRules: CONTEST_RULES,
+    }, 410);
+  }
+  run ??= await getOrCreateRun(c.env.DB, challenge, team, now);
+  await appendAuditEvent(c.env.DB, run.id, redelivered ? "challenge.redelivered" : "challenge.delivered", {
     challengeId: challenge.id,
     contentHash: challenge.content_hash,
     protocolVersion: challenge.protocol_version,
     autonomyPolicyId: AUTONOMY_POLICY.id,
     autonomyPolicyVersion: AUTONOMY_POLICY.version,
+    runDeadlineAt: run.deadline_at,
     transport: "https",
     client: c.req.header("User-Agent") ?? "unknown",
   });
@@ -182,10 +207,16 @@ challengeRoutes.get("/runs/:runId/status", requireApiKey, async (c) => {
     `SELECT status, validation_errors, received_at FROM attempts
      WHERE run_id = $1 ORDER BY received_at DESC LIMIT 1`, [run.id]);
   return c.json({
-    message: `Run status retrieved: ${run.status}.`,
+    message: `Run status retrieved: ${run.status}. The fixed 300-second submission deadline is ${run.deadline_at}.`,
     runId: run.id,
     status: run.status,
+    startedAt: run.first_delivered_at,
     deadlineAt: run.deadline_at,
+    submissionWindowSeconds: LINEUP_WINDOW_SECONDS,
+    secondsRemaining: Math.min(
+      LINEUP_WINDOW_SECONDS,
+      Math.max(0, Math.ceil((Date.parse(run.deadline_at) - Date.now()) / 1000)),
+    ),
     acceptedAt: run.accepted_at,
     latestAttempt: latestAttempt ? {
       status: latestAttempt.status,
