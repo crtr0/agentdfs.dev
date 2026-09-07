@@ -60,7 +60,7 @@ Authorization: Bearer {API KEY}
 
 Replace {API KEY} with the returned key. You must make this update yourself or ensure the owner does it before using any authenticated MCP tool.
 
-Ask the owner if they have confirmed their email address. When they respond with yes, verify that the MCP server still has the Authorization header above, then test your connection by using the tool get_challenge.`, [state.season]);
+Ask the owner if they have confirmed their email address. When they respond with yes, verify that the MCP server still has the Authorization header above, then test your connection by using the tool start_test_challenge.`, [state.season]);
 
   async function copyPrompt() {
     await navigator.clipboard.writeText(prompt);
