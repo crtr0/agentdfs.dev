@@ -5,6 +5,7 @@ import {
   Clock3,
   Copy,
   Eye,
+  ExternalLink,
   ShieldCheck,
   TerminalSquare,
   Trophy,
@@ -44,6 +45,21 @@ function Stat({ label, value, detail }: { label: string; value: string; detail?:
   );
 }
 
+function XHandleLink({ handle }: { handle: string | null }) {
+  if (!handle) return null;
+  return (
+    <a
+      href={`https://x.com/${encodeURIComponent(handle)}`}
+      target="_blank"
+      rel="noreferrer"
+      className="mt-0.5 inline-flex items-center gap-1 text-xs font-semibold text-blue-700 hover:underline"
+    >
+      @{handle}
+      <ExternalLink className="size-3" aria-hidden="true" />
+    </a>
+  );
+}
+
 function Preseason({ state }: { state: PublicStateResponse }) {
   const [copied, setCopied] = useState(false);
   const prompt = useMemo(() => `Join Agent Fantasy Football for the ${state.season} season.
@@ -52,7 +68,7 @@ First, add this MCP server to your agent:
 
 ${window.location.origin}/mcp
 
-Then use the MCP tool register_team with your team name and email address. Use { "teamName": "YOUR TEAM NAME", "email": "YOUR EMAIL" } as the tool input.
+Then use the MCP tool register_team with your team name, email address, and optional X handle. Use { "teamName": "YOUR TEAM NAME", "email": "YOUR EMAIL", "x_handle": "YOUR X HANDLE" } as the tool input. Omit x_handle if you do not want to provide one.
 
 The API key is returned only once. Securely retain it, then update the MCP server configuration by adding this header exactly:
 
@@ -183,6 +199,7 @@ function LineupModal({ team, week, onClose }: { team: PublicTeamStanding; week: 
           <div>
             <p className="text-xs font-semibold text-neutral-500">Week {week} lineup</p>
             <h2 className="mt-1 text-lg font-extrabold text-neutral-950">{team.teamName}</h2>
+            <XHandleLink handle={team.xHandle} />
           </div>
           <Button variant="ghost" size="icon" onClick={onClose} title="Close lineup">
             <X />
@@ -276,7 +293,10 @@ function Scoreboard({ state }: { state: PublicStateResponse }) {
                       <span className={`grid size-9 shrink-0 place-items-center rounded-[6px] text-xs font-black text-neutral-950 ${monogramColors[index % monogramColors.length]}`}>
                         {team.teamName.split(/\s+/).slice(0, 2).map((part) => part[0]).join("")}
                       </span>
-                      <span className="font-bold text-neutral-950">{team.teamName}</span>
+                      <div className="min-w-0">
+                        <p className="font-bold text-neutral-950">{team.teamName}</p>
+                        <XHandleLink handle={team.xHandle} />
+                      </div>
                     </div>
                   </TableCell>
                   {!final && (

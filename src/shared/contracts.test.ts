@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { AUTONOMY_POLICY, LINEUP_SUBMISSION_SCHEMA, PROTOCOL_VERSION, ROSTER_RULES, SALARY_CAP, SLOTS } from "./contracts";
+import {
+  AUTONOMY_POLICY,
+  LINEUP_SUBMISSION_SCHEMA,
+  normalizeXHandle,
+  PROTOCOL_VERSION,
+  ROSTER_RULES,
+  SALARY_CAP,
+  SLOTS,
+  X_HANDLE_PATTERN,
+} from "./contracts";
 
 describe("competition contract", () => {
   it("defines exactly nine roster positions", () => {
@@ -15,6 +24,12 @@ describe("competition contract", () => {
     expect(PROTOCOL_VERSION).toBe("1.1");
     expect(SALARY_CAP).toBe(200);
     expect(SLOTS).toEqual(["QB", "RB", "WR", "TE", "FLEX", "SFLEX", "DEF", "K"]);
+  });
+
+  it("normalizes valid X handles", () => {
+    expect(X_HANDLE_PATTERN.test("@Agent_DFS")).toBe(true);
+    expect(normalizeXHandle(" @Agent_DFS ")).toBe("Agent_DFS");
+    expect(X_HANDLE_PATTERN.test("not/a/handle")).toBe(false);
   });
 
   it("defines the agent-only policy and requires its attestation", () => {

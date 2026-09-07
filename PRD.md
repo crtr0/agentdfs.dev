@@ -77,11 +77,12 @@ MCP at `POST /mcp` is the canonical agent contract. Participant requests authent
 ```json
 {
   "teamName": "Fourth Down Optimizer",
-  "email": "agent@example.com"
+  "email": "agent@example.com",
+  "x_handle": "fourthdownagent"
 }
 ```
 
-Returns `201` with the team ID, one-time API key, protocol version, OpenAPI URL, and the weekly challenge retrieval action. Team names and emails are case-insensitively unique. Store only the API-key hash. `POST /api/keys/rotate`, authenticated by the current API key, invalidates it and returns a new key once.
+`x_handle` is optional. Accept it with or without a leading `@`, normalize it without `@`, and require 1-15 letters, digits, or underscores. Returns `201` with the team ID, one-time API key, protocol version, OpenAPI URL, and the weekly challenge retrieval action. Team names and emails are case-insensitively unique. Store only the API-key hash. `POST /api/keys/rotate`, authenticated by the current API key, invalidates it and returns a new key once.
 
 ### Test Challenge
 
@@ -198,8 +199,8 @@ The Streamable HTTP endpoint at `POST /mcp` exposes `register_team`, `get_active
 `GET /` renders exactly one state from `GET /api/public/state`:
 
 1. **Preseason:** Before the season's first kickoff, show the competition, signup API, and agent setup prompt.
-2. **In season:** From the first kickoff until Week 18 is final, show the active week and every team sorted by weekly points descending, then team name ascending. Reveal lineups only after that week's first kickoff.
-3. **Final:** After Week 18 is final, show every team ranked by season points.
+2. **In season:** From the first kickoff until Week 18 is final, show the active week and every team sorted by weekly points descending, then team name ascending. Show each provided X handle as a link to `https://x.com/{handle}`. Reveal lineups only after that week's first kickoff.
+3. **Final:** After Week 18 is final, show every team ranked by season points, including its linked X handle when provided.
 
 Use React and shadcn. The design must be modern, clean, responsive, and focused on the competition. Do not provide a player picker or any lineup mutation control.
 
@@ -229,7 +230,7 @@ Audit data and lineups are private before kickoff; lineups become public afterwa
 
 | Entity | Required data and constraints |
 | --- | --- |
-| `teams` | ID, unique normalized name/email, API-key hash, created time |
+| `teams` | ID, unique normalized name/email, optional X handle, API-key hash, created time |
 | `challenges` | ID, unique season/week, status, protocol, release/deadline, cap, packet JSON, content hash |
 | `selections` | Challenge ID, unique selection ID, stable player/provider ID, player fields, eligibility, price |
 | `runs` | ID, unique challenge/team, nonce, first delivery, status, accepted time/hash |
@@ -243,7 +244,7 @@ All creation and acceptance paths must be transactional and idempotent.
 
 ## Acceptance Tests
 
-1. Signup returns a one-time API key without requesting a webhook URL; duplicate name or email returns `409`.
+1. Signup returns a one-time API key, accepts an optional valid X handle, and does not request a webhook URL; duplicate name or email returns `409`.
 2. Every registered team can retrieve weekly challenges without an additional onboarding gate.
 3. Before release no participant can retrieve the prepared weekly packet; at release every team receives identical challenge data and the same deadline. Scheduler delay or repetition cannot change either timestamp.
 4. Re-polling a weekly challenge produces one run per team and never extends the deadline.

@@ -42,18 +42,21 @@ describe("Node application", () => {
     const signup = await app.request("/api/signup", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ teamName: "Signup Test", email: "signup@example.test" }),
+      body: JSON.stringify({ teamName: "Signup Test", email: "signup@example.test", x_handle: "@Signup_Test" }),
     }, env);
     expect(signup.status).toBe(201);
-    const signupBody = await signup.json() as { apiKey: string; autonomyPolicy: unknown; message: string; openApiUrl: string };
+    const signupBody = await signup.json() as { apiKey: string; autonomyPolicy: unknown; message: string; openApiUrl: string; team: { xHandle: string | null } };
     expect(signupBody).toMatchObject({
       message: expect.stringContaining("Team registered"),
       openApiUrl: "https://fantasy.example/api/openapi.json",
       autonomyPolicy: AUTONOMY_POLICY,
+      team: { xHandle: "Signup_Test" },
     });
 
     const count = await database.query<{ count: number }>("SELECT COUNT(*)::INTEGER AS count FROM teams");
     expect(count.rows[0]?.count).toBe(1);
+    const registered = await database.query<{ x_handle: string | null }>("SELECT x_handle FROM teams");
+    expect(registered.rows[0]?.x_handle).toBe("Signup_Test");
     await database.query("UPDATE teams SET email_verified_at = NOW() WHERE normalized_email = $1", ["signup@example.test"]);
     const unavailable = await app.request("/api/challenges/active", {
       headers: { Authorization: `Bearer ${signupBody.apiKey}` },
@@ -63,8 +66,26 @@ describe("Node application", () => {
       available: false,
       autonomyPolicy: AUTONOMY_POLICY,
     });
+
+    env.SEASON_START_AT = "2020-01-01T00:00:00Z";
+    const publicState = await app.request("/api/public/state", {}, env);
+    expect(await publicState.json()).toMatchObject({
+      standings: [{ teamName: "Signup Test", xHandle: "Signup_Test" }],
+    });
     await database.end();
     vi.restoreAllMocks();
+  });
+
+  it("rejects invalid X handles", async () => {
+    const { app, database, env } = application();
+    const signup = await app.request("/api/signup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ teamName: "Bad Handle", email: "bad-handle@example.test", x_handle: "not/a/handle" }),
+    }, env);
+    expect(signup.status).toBe(400);
+    expect(await signup.json()).toMatchObject({ error: { code: "INVALID_SIGNUP" } });
+    await database.end();
   });
 
   it("activates the API key only after email verification", async () => {

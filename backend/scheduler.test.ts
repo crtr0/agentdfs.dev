@@ -43,6 +43,7 @@ describe("application scheduler", () => {
     const team: TeamRecord = {
       id: "team_scheduler",
       team_name: "Scheduler Team",
+      x_handle: null,
       email: "scheduler@example.test",
       api_key_hash: "scheduler_hash",
       created_at: "2000-01-01T00:00:00Z",

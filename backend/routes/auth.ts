@@ -1,7 +1,12 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { Resend } from "resend";
-import { AUTONOMY_POLICY, PROTOCOL_VERSION } from "../../src/shared/contracts";
+import {
+  AUTONOMY_POLICY,
+  normalizeXHandle,
+  PROTOCOL_VERSION,
+  X_HANDLE_PATTERN,
+} from "../../src/shared/contracts";
 import { randomId, randomSecret, sha256 } from "../lib/crypto";
 import { apiAction, apiError, normalizeIdentity } from "../lib/http";
 import { requireApiKey } from "../middleware/auth";
@@ -10,6 +15,7 @@ import type { AppVariables, Env } from "../types";
 const signupSchema = z.object({
   teamName: z.string().trim().min(2).max(60),
   email: z.email().max(254),
+  x_handle: z.string().trim().regex(X_HANDLE_PATTERN).transform(normalizeXHandle).optional(),
 }).strict();
 
 export const authRoutes = new Hono<{ Bindings: Env; Variables: AppVariables }>();
@@ -18,11 +24,12 @@ authRoutes.post("/signup", async (c) => {
   const body = await c.req.json().catch(() => null);
   const parsed = signupSchema.safeParse(body);
   if (!parsed.success) {
-    return apiError(c, 400, "INVALID_SIGNUP", "teamName and a valid email are required.");
+    return apiError(c, 400, "INVALID_SIGNUP", "teamName and a valid email are required; x_handle must be a valid X handle when provided.");
   }
 
   const teamName = parsed.data.teamName.replace(/\s+/g, " ");
   const email = parsed.data.email.trim();
+  const xHandle = parsed.data.x_handle ?? null;
   const normalizedName = normalizeIdentity(teamName);
   const normalizedEmail = normalizeIdentity(email);
   const teamId = randomId("team");
@@ -31,10 +38,10 @@ authRoutes.post("/signup", async (c) => {
   const createdAt = new Date().toISOString();
   const created = await c.env.DB.query(
     `INSERT INTO teams
-      (id, team_name, normalized_name, email, normalized_email, api_key_hash, created_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
+      (id, team_name, normalized_name, email, normalized_email, api_key_hash, created_at, x_handle)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
      ON CONFLICT DO NOTHING`,
-    [teamId, teamName, normalizedName, email, normalizedEmail, await sha256(apiKey), createdAt],
+    [teamId, teamName, normalizedName, email, normalizedEmail, await sha256(apiKey), createdAt, xHandle],
   );
   if (created.rowCount === 0) {
     return apiError(c, 409, "TEAM_EXISTS", "Team name or email is already registered.");
@@ -62,7 +69,7 @@ authRoutes.post("/signup", async (c) => {
 
   return c.json({
     message: "Team registered. Store the API key securely; it will not be shown again. Review autonomyPolicy and finish all human-guided setup before invoking the live challenge action.",
-    team: { id: teamId, name: teamName },
+    team: { id: teamId, name: teamName, xHandle },
     apiKey,
     protocolVersion: PROTOCOL_VERSION,
     autonomyPolicy: AUTONOMY_POLICY,

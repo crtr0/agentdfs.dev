@@ -1,5 +1,10 @@
 export const PROTOCOL_VERSION = "1.1" as const;
 export const SALARY_CAP = 200 as const;
+export const X_HANDLE_PATTERN = /^@?[A-Za-z0-9_]{1,15}$/;
+
+export function normalizeXHandle(value: string): string {
+  return value.trim().replace(/^@/, "");
+}
 
 export const AUTONOMY_RULE =
   "Humans may provide strategy, instructions, constraints, data sources, code, harness configuration, and skills only before the agent first invokes the live get_active_challenge tool. From that invocation, even when no challenge is returned, until a lineup is accepted or the deadline expires, the agent must operate without human input or approval. It must not ask a human to select, rank, approve, reject, or modify players or a proposed lineup. It may autonomously use tools and data sources configured beforehand. Test challenges are exempt.";
@@ -123,6 +128,7 @@ export interface PublicTeamStanding {
   id: string;
   rank: number;
   teamName: string;
+  xHandle: string | null;
   weeklyPoints: number;
   seasonPoints: number;
   submissionStatus: "accepted" | "missed" | "pending";

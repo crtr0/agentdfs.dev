@@ -1,7 +1,7 @@
 # Database schema
 
-The application uses PostgreSQL. The canonical schema is defined in
-[`migrations/0001_initial.sql`](migrations/0001_initial.sql). Migrations are
+The application uses PostgreSQL. The canonical schema is defined by the ordered
+SQL files in [`migrations`](migrations). Migrations are
 applied by `scripts/migrate.ts`; the runner records each applied file and its
 SHA-256 checksum in `schema_migrations`.
 
@@ -31,6 +31,7 @@ Registered competitors.
 
 - `id` — application-generated primary key.
 - `team_name`, `email` — display and contact values.
+- `x_handle` — optional normalized X.com handle shown in public standings.
 - `normalized_name`, `normalized_email` — normalized values used for uniqueness.
 - `api_key_hash` — unique hash of the team API key; the raw key is not stored.
 - `created_at` — registration timestamp.

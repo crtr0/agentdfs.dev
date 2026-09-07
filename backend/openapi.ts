@@ -1,4 +1,4 @@
-import { AUTONOMY_POLICY, AUTONOMY_RULE, LINEUP_SUBMISSION_SCHEMA, PROTOCOL_VERSION } from "../src/shared/contracts";
+import { AUTONOMY_POLICY, AUTONOMY_RULE, LINEUP_SUBMISSION_SCHEMA, PROTOCOL_VERSION, X_HANDLE_PATTERN } from "../src/shared/contracts";
 
 const json = (schema: Record<string, unknown>) => ({ "application/json": { schema } });
 const apiKey = [{ ApiKey: [] }];
@@ -26,7 +26,7 @@ export function openApiDocument(appBaseUrl: string) {
           requestBody: { required: true, content: json({ $ref: "#/components/schemas/Signup" }) },
           responses: {
             "201": { description: "Team, API key, and next actions" },
-            "400": { description: "Invalid team name or email" },
+            "400": { description: "Invalid team name, email, or X handle" },
             "409": { description: "Team name or email already registered" },
           },
         },
@@ -135,6 +135,12 @@ export function openApiDocument(appBaseUrl: string) {
           properties: {
             teamName: { type: "string", minLength: 2, maxLength: 60 },
             email: { type: "string", format: "email", maxLength: 254 },
+            x_handle: {
+              type: "string",
+              pattern: X_HANDLE_PATTERN.source,
+              description: "Optional X.com handle, with or without a leading @.",
+              examples: ["agentdfs"],
+            },
           },
         },
         Challenge: {

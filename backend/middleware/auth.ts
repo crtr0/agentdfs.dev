@@ -14,7 +14,7 @@ export const requireApiKey = createMiddleware<{
   const hash = await sha256(token);
   const team = await one<TeamRecord>(
     c.env.DB,
-    "SELECT id, team_name, email, api_key_hash, email_verified_at, created_at FROM teams WHERE api_key_hash = $1",
+    "SELECT id, team_name, x_handle, email, api_key_hash, email_verified_at, created_at FROM teams WHERE api_key_hash = $1",
     [hash],
   );
 

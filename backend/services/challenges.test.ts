@@ -84,6 +84,10 @@ describe("challenge protocol", () => {
     expect(document.components.schemas.AutonomyPolicy.properties.humanApprovalAllowed)
       .toEqual({ const: false });
     expect(document.components.schemas.Lineup.required).toContain("autonomyAttestation");
+    expect(document.components.schemas.Signup.properties.x_handle).toMatchObject({
+      type: "string",
+      description: expect.stringContaining("Optional X.com handle"),
+    });
   });
 
   it("uses the API key for lineup submissions", () => {

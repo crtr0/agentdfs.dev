@@ -24,6 +24,7 @@ export type AppVariables = {
 export interface TeamRecord {
   id: string;
   team_name: string;
+  x_handle: string | null;
   email: string;
   api_key_hash: string;
   email_verified_at?: string | null;

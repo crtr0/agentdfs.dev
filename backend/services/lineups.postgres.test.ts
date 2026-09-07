@@ -30,6 +30,7 @@ describe("PostgreSQL lineup acceptance", () => {
     const team: TeamRecord = {
       id: "team_postgres",
       team_name: "Postgres Team",
+      x_handle: null,
       email: "postgres@example.test",
       api_key_hash: "postgres_hash",
       created_at: "2026-08-29T00:00:00.000Z",

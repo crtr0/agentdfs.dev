@@ -7,6 +7,7 @@ import type { ChallengeRecord, Env } from "../types";
 interface StandingRow {
   id: string;
   team_name: string;
+  x_handle: string | null;
   weekly_points: number;
   season_points: number;
   run_status: string | null;
@@ -31,6 +32,7 @@ function ranked(rows: StandingRow[], final: boolean): PublicTeamStanding[] {
       id: row.id,
       rank,
       teamName: row.team_name,
+      xHandle: row.x_handle,
       weeklyPoints: row.weekly_points,
       seasonPoints: row.season_points,
       submissionStatus: row.run_status === "accepted"
@@ -68,17 +70,19 @@ publicRoutes.get("/public/state", async (c) => {
   if (state !== "preseason") {
     const week = active?.week ?? 1;
     const rows = await c.env.DB.query<StandingRow>(
-      `SELECT t.id, t.team_name,
+      `SELECT t.id, t.team_name, t.x_handle,
         COALESCE(s.points, 0) AS weekly_points,
-        COALESCE(st.season_points, (
-          SELECT SUM(s2.points) FROM scores s2 WHERE s2.team_id = t.id AND s2.season = $1
-        ), 0) AS season_points,
+        COALESCE(st.season_points, totals.season_points, 0) AS season_points,
         r.status AS run_status
        FROM teams t
-       LEFT JOIN scores s ON s.team_id = t.id AND s.season = $2 AND s.week = $3
-       LEFT JOIN standings st ON st.team_id = t.id AND st.season = $4
-       LEFT JOIN runs r ON r.team_id = t.id AND r.challenge_id = $5`,
-      [season, season, week, season, active?.id ?? ""],
+       LEFT JOIN scores s ON s.team_id = t.id AND s.season = $1 AND s.week = $2
+       LEFT JOIN standings st ON st.team_id = t.id AND st.season = $1
+       LEFT JOIN (
+         SELECT team_id, SUM(points) AS season_points
+         FROM scores WHERE season = $1 GROUP BY team_id
+       ) totals ON totals.team_id = t.id
+       LEFT JOIN runs r ON r.team_id = t.id AND r.challenge_id = $3`,
+      [season, week, active?.id ?? ""],
     );
     standings = ranked(rows.rows, state === "final");
   }
