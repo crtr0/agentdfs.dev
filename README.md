@@ -178,6 +178,8 @@ npm run dev
 
 Vite serves the site at `http://127.0.0.1:5173` and proxies API traffic to the Node service on port `8080`. The OpenAPI contract is at `http://127.0.0.1:5173/api/openapi.json`.
 
+The Basic Auth-protected admin dashboard is at `http://127.0.0.1:5173/admin`. Select a team from `/admin/teams` to edit its display name or optional X handle.
+
 Run the verification suite with:
 
 ```sh

@@ -88,6 +88,59 @@ describe("Node application", () => {
     await database.end();
   });
 
+  it("edits team names and X handles from the admin team page", async () => {
+    const { app, database, env } = application();
+    const authorization = `Basic ${Buffer.from("admin:test-admin").toString("base64")}`;
+    await database.query(
+      `INSERT INTO teams
+        (id, team_name, normalized_name, email, normalized_email, api_key_hash, created_at, x_handle)
+       VALUES
+        ($1, $2, $3, $4, $5, $6, $7, $8),
+        ($9, $10, $11, $12, $13, $14, $15, $16)`,
+      [
+        "team_edit", "Original Team", "original team", "edit@example.test", "edit@example.test", "edit_hash", "2026-09-01T00:00:00Z", "old_handle",
+        "team_other", "Other Team", "other team", "other@example.test", "other@example.test", "other_hash", "2026-09-02T00:00:00Z", null,
+      ],
+    );
+
+    const detail = await app.request("/admin/teams?id=team_edit", { headers: { Authorization: authorization } }, env);
+    expect(detail.status).toBe(200);
+    const html = await detail.text();
+    expect(html).toContain('name="teamName" value="Original Team"');
+    expect(html).toContain('name="x_handle" value="old_handle"');
+
+    const updated = await app.request("/admin/teams?id=team_edit", {
+      method: "POST",
+      headers: { Authorization: authorization, "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ teamName: "  Renamed   Team  ", x_handle: "@new_handle" }),
+    }, env);
+    expect(updated.status).toBe(303);
+    expect(updated.headers.get("location")).toContain("updated=1");
+    const team = await database.query<{ team_name: string; normalized_name: string; x_handle: string | null }>(
+      "SELECT team_name, normalized_name, x_handle FROM teams WHERE id = $1",
+      ["team_edit"],
+    );
+    expect(team.rows[0]).toEqual({ team_name: "Renamed Team", normalized_name: "renamed team", x_handle: "new_handle" });
+
+    const duplicate = await app.request("/admin/teams?id=team_edit", {
+      method: "POST",
+      headers: { Authorization: authorization, "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ teamName: "Other Team", x_handle: "" }),
+    }, env);
+    expect(duplicate.status).toBe(303);
+    expect(duplicate.headers.get("location")).toContain("error=");
+
+    const cleared = await app.request("/admin/teams?id=team_edit", {
+      method: "POST",
+      headers: { Authorization: authorization, "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ teamName: "Renamed Team", x_handle: "" }),
+    }, env);
+    expect(cleared.status).toBe(303);
+    const clearedTeam = await database.query<{ x_handle: string | null }>("SELECT x_handle FROM teams WHERE id = $1", ["team_edit"]);
+    expect(clearedTeam.rows[0]?.x_handle).toBeNull();
+    await database.end();
+  });
+
   it("activates the API key only after email verification", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ id: "email_test" }), { status: 200, headers: { "Content-Type": "application/json" } }));
     const { app, database, env } = application();

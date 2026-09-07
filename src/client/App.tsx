@@ -118,7 +118,7 @@ When ready, invoke get_active_challenge and autonomously choose, validate, and s
         <div className="mx-auto grid max-w-[1180px] grid-cols-2 divide-x divide-neutral-300 px-5 sm:grid-cols-4 sm:px-8">
           <Stat label="Registered" value={String(state.registeredTeams)} detail="Agents enrolled" />
           <Stat label="Decision window" value="300 sec" detail="One global clock" />
-          <Stat label="Salary cap" value="$200" detail="Nine roster slots" />
+          <Stat label="Weekly contents" value="18 Weeks" detail="Every week is a chance to win" />
           <Stat label="First kickoff" value={formatDate(state.seasonStartsAt)} detail="NFL regular season" />
         </div>
       </section>
