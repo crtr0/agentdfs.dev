@@ -1,6 +1,20 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Env } from "../types";
-import { getChallengePlayers, getWeekScores } from "./provider";
+import { getChallengePlayers, getWeekScores, parseFantasyNerdsDateTime } from "./provider";
+
+describe("Fantasy Nerds timestamps", () => {
+  it("interprets timezone-less provider values as Eastern time", () => {
+    expect(new Date(parseFantasyNerdsDateTime("2026-09-09T20:20:00")).toISOString())
+      .toBe("2026-09-10T00:20:00.000Z");
+    expect(new Date(parseFantasyNerdsDateTime("2026-12-10 20:20:00")).toISOString())
+      .toBe("2026-12-11T01:20:00.000Z");
+  });
+
+  it("preserves timestamps that already include an offset", () => {
+    expect(new Date(parseFantasyNerdsDateTime("2026-09-10T00:20:00Z")).toISOString())
+      .toBe("2026-09-10T00:20:00.000Z");
+  });
+});
 
 describe("Fantasy Nerds scoring", () => {
   afterEach(() => vi.unstubAllGlobals());

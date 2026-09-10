@@ -15,6 +15,10 @@ interface StandingRow {
 
 export const publicRoutes = new Hono<{ Bindings: Env }>();
 
+function publicKickoffAt(env: Env, challenge: ChallengeRecord): string {
+  return challenge.week === 1 ? env.SEASON_START_AT : challenge.first_game_at;
+}
+
 function ranked(rows: StandingRow[], final: boolean): PublicTeamStanding[] {
   const sorted = [...rows].sort((left, right) => {
     const pointDifference = final
@@ -65,9 +69,12 @@ publicRoutes.get("/public/state", async (c) => {
     active = allChallenges.findLast((challenge) => Date.parse(challenge.first_game_at) <= now)
       ?? allChallenges[0];
   }
+  const kickoffStarted = active
+    ? now >= Date.parse(publicKickoffAt(c.env, active))
+    : false;
 
   let standings: PublicTeamStanding[] = [];
-  if (state !== "preseason") {
+  if (state === "final" || (state === "in-season" && kickoffStarted)) {
     const week = active?.week ?? 1;
     const rows = await c.env.DB.query<StandingRow>(
       `SELECT t.id, t.team_name, t.x_handle,
@@ -102,8 +109,9 @@ publicRoutes.get("/public/state", async (c) => {
     challenge: active ? {
       releasedAt: active.released_at,
       deadlineAt: active.deadline_at,
-      firstGameAt: active.first_game_at,
-      lineupRevealed: now >= Date.parse(active.first_game_at),
+      firstGameAt: publicKickoffAt(c.env, active),
+      teamsRevealed: kickoffStarted,
+      lineupRevealed: kickoffStarted,
     } : undefined,
     standings,
   };
@@ -119,7 +127,7 @@ publicRoutes.get("/public/lineups/:teamId/:week", async (c) => {
     [season, week],
   );
   if (!challenge) return apiError(c, 404, "CHALLENGE_NOT_FOUND", "Challenge not found.");
-  if (Date.now() < Date.parse(challenge.first_game_at)) {
+  if (Date.now() < Date.parse(publicKickoffAt(c.env, challenge))) {
     return apiError(c, 403, "LINEUP_SEALED", "Lineups remain sealed until the first kickoff.");
   }
 

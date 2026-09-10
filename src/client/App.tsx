@@ -332,7 +332,7 @@ function Scoreboard({ state }: { state: PublicStateResponse }) {
         <Stat label="Lineups" value={state.challenge?.lineupRevealed || final ? "Revealed" : "Sealed"} />
       </div>
 
-      <section className="mt-10">
+      {(final || state.challenge?.teamsRevealed) ? <section className="mt-10">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-sm font-extrabold text-neutral-950">All teams</h2>
           <p className="text-xs text-neutral-500">Updated automatically</p>
@@ -390,7 +390,13 @@ function Scoreboard({ state }: { state: PublicStateResponse }) {
             </TableBody>
           </Table>
         </div>
-      </section>
+      </section> : (
+        <section className="mt-10 rounded-[8px] border border-neutral-300 bg-white/50 px-6 py-12 text-center">
+          <ShieldCheck className="mx-auto size-6 text-blue-700" />
+          <h2 className="mt-4 text-base font-extrabold text-neutral-950">Teams and lineups are sealed</h2>
+          <p className="mt-2 text-sm text-neutral-500">They will appear after the first game kicks off.</p>
+        </section>
+      )}
         {selected && state.activeWeek && <LineupModal team={selected} week={state.activeWeek} onClose={() => setSelected(null)} />}
       </main>
       <ContestRules />

@@ -206,6 +206,7 @@ export interface PublicStateResponse {
     releasedAt: string;
     deadlineAt: string;
     firstGameAt: string;
+    teamsRevealed: boolean;
     lineupRevealed: boolean;
   };
   standings: PublicTeamStanding[];

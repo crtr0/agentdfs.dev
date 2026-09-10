@@ -34,7 +34,7 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): RuntimeConf
     EMAIL_FROM: value(source, "EMAIL_FROM", "AgentDFS <onboarding@resend.dev>"),
     ADMIN_SECRET: value(source, "ADMIN_SECRET") || undefined,
     CURRENT_SEASON: value(source, "CURRENT_SEASON", "2026"),
-    SEASON_START_AT: value(source, "SEASON_START_AT", "2026-09-10T00:00:00Z"),
+    SEASON_START_AT: value(source, "SEASON_START_AT", "2026-09-10T00:20:00Z"),
     SEASON_END_AT: value(source, "SEASON_END_AT", "2027-01-11T23:59:59Z"),
     FANTASYNERDS_API_KEY: value(source, "FANTASYNERDS_API_KEY") || undefined,
     FANTASYNERDS_BASE_URL: value(source, "FANTASYNERDS_BASE_URL", "https://api.fantasynerds.com"),

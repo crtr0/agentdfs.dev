@@ -41,6 +41,55 @@ export interface ProviderScoreResult {
 }
 
 const allowedPositions = new Set(["QB", "RB", "WR", "TE"]);
+const fantasyNerdsTimeZone = "America/New_York";
+const easternPartsFormatter = new Intl.DateTimeFormat("en-US", {
+  timeZone: fantasyNerdsTimeZone,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hourCycle: "h23",
+});
+
+function easternOffsetAt(timestamp: number): number {
+  const parts = Object.fromEntries(
+    easternPartsFormatter.formatToParts(new Date(timestamp))
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, Number(part.value)]),
+  );
+  const easternAsUtc = Date.UTC(
+    parts.year,
+    parts.month - 1,
+    parts.day,
+    parts.hour,
+    parts.minute,
+    parts.second,
+  );
+  return easternAsUtc - Math.floor(timestamp / 1000) * 1000;
+}
+
+/** Fantasy Nerds documents game_date and slate_start as Eastern wall-clock times. */
+export function parseFantasyNerdsDateTime(value: string): number {
+  const trimmed = value.trim();
+  if (/[zZ]$|[+-]\d{2}:?\d{2}$/.test(trimmed)) return Date.parse(trimmed);
+
+  const match = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?$/.exec(trimmed);
+  if (!match) return Number.NaN;
+  const [, year, month, day, hour, minute, second = "0", fraction = "0"] = match;
+  const wallClockAsUtc = Date.UTC(
+    Number(year),
+    Number(month) - 1,
+    Number(day),
+    Number(hour),
+    Number(minute),
+    Number(second),
+    Number(fraction.padEnd(3, "0")),
+  );
+  const firstCandidate = wallClockAsUtc - easternOffsetAt(wallClockAsUtc);
+  return wallClockAsUtc - easternOffsetAt(firstCandidate);
+}
 
 async function providerFetchJson<T>(env: Env, path: string): Promise<T> {
   if (!env.FANTASYNERDS_API_KEY) throw new Error("FANTASYNERDS_API_KEY is required");
@@ -69,7 +118,7 @@ export async function getSeasonSchedule(env: Env, season: number): Promise<WeekS
     if (game.week < 1 || game.week > 18) continue;
     const value = game.game_date;
     if (!value) continue;
-    const timestamp = Date.parse(value);
+    const timestamp = parseFantasyNerdsDateTime(value);
     const existing = weeks.get(game.week);
     if (!Number.isNaN(timestamp) && (existing === undefined || timestamp < existing)) {
       weeks.set(game.week, timestamp);
@@ -118,8 +167,9 @@ export async function getChallengePlayers(
     const providerId = entry.playerId;
     const salary = Number(entry.salary ?? entry.yahoo_salary ?? entry.operator_salary ?? 0);
     const gameStartsAt = String(entry.game_date ?? game?.game_date ?? slate.slate_start ?? firstGameAt);
+    const gameStartsAtTimestamp = parseFantasyNerdsDateTime(gameStartsAt);
     if (!providerId || !entry.name || !team || !opponent || salary <= 0
-      || !allowedPositions.has(position)) return [];
+      || !allowedPositions.has(position) || Number.isNaN(gameStartsAtTimestamp)) return [];
     return [{
       selectionId: `sel_${challengeId}_${String(index + 1).padStart(3, "0")}`,
       playerId: `fantasynerds_${providerId}`,
@@ -132,7 +182,7 @@ export async function getChallengePlayers(
       // (for example, 14 means $14). Do not convert them from a $50,000 scale.
       price: Math.max(1, Math.round(salary)),
       status: String(entry.status ?? "ACTIVE").toUpperCase(),
-      gameStartsAt: new Date(gameStartsAt).toISOString(),
+      gameStartsAt: new Date(gameStartsAtTimestamp).toISOString(),
     } satisfies ChallengePlayer];
   });
   const positionCount = (position: string) => players.filter((player) => player.position === position).length;

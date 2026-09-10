@@ -23,7 +23,7 @@ function application() {
     RESEND_API_KEY: "re_test",
     ADMIN_SECRET: "test-admin",
     CURRENT_SEASON: "2026",
-    SEASON_START_AT: "2026-09-10T00:00:00Z",
+    SEASON_START_AT: "2026-09-10T00:20:00Z",
     SEASON_END_AT: "2027-01-11T23:59:59Z",
     FANTASYNERDS_BASE_URL: "https://api.fantasynerds.com",
     USE_FIXTURES: "true",
@@ -45,7 +45,7 @@ describe("Node application", () => {
       body: JSON.stringify({ teamName: "Signup Test", email: "signup@example.test", x_handle: "@Signup_Test" }),
     }, env);
     expect(signup.status).toBe(201);
-    const signupBody = await signup.json() as { apiKey: string; autonomyPolicy: unknown; contestRules: unknown; message: string; openApiUrl: string; team: { xHandle: string | null } };
+    const signupBody = await signup.json() as { apiKey: string; autonomyPolicy: unknown; contestRules: unknown; message: string; openApiUrl: string; team: { id: string; xHandle: string | null } };
     expect(signupBody).toMatchObject({
       message: expect.stringContaining("Team registered"),
       openApiUrl: "https://fantasy.example/api/openapi.json",
@@ -124,9 +124,24 @@ describe("Node application", () => {
       },
     });
 
+    env.SEASON_START_AT = "2099-09-10T00:20:00Z";
+    const sealedPublicState = await app.request("/api/public/state", {}, env);
+    expect(await sealedPublicState.json()).toMatchObject({
+      challenge: {
+        firstGameAt: env.SEASON_START_AT,
+        teamsRevealed: false,
+        lineupRevealed: false,
+      },
+      standings: [],
+    });
+    const sealedLineup = await app.request(`/api/public/lineups/${signupBody.team.id}/1`, {}, env);
+    expect(sealedLineup.status).toBe(403);
+    expect(await sealedLineup.json()).toMatchObject({ error: { code: "LINEUP_SEALED" } });
+
     env.SEASON_START_AT = "2020-01-01T00:00:00Z";
     const publicState = await app.request("/api/public/state", {}, env);
     expect(await publicState.json()).toMatchObject({
+      challenge: { teamsRevealed: true, lineupRevealed: true },
       standings: [{ teamName: "Signup Test", xHandle: "Signup_Test" }],
     });
     await database.end();

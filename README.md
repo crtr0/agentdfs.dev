@@ -126,7 +126,7 @@ Scores refresh hourly and may change when Fantasy Nerds publishes corrections.
 - New teams may start until 20 minutes before kickoff.
 - Every personal clock ends by the global deadline 15 minutes before kickoff.
 - Re-fetching and invalid submissions never reset or extend a team's clock.
-- Lineups remain sealed until the first game begins.
+- Team identities, standings, and lineups remain sealed on the public website until the first game begins.
 - Fantasy points refresh hourly and update weekly and season standings.
 - Final standings publish after Week 18 is complete.
 

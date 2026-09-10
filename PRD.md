@@ -211,7 +211,7 @@ The Streamable HTTP endpoint at `POST /mcp` exposes `register_team`, `get_active
 `GET /` renders exactly one state from `GET /api/public/state`:
 
 1. **Preseason:** Before the season's first kickoff, show the competition, signup API, agent setup prompt, lineup rules, and scoring system.
-2. **In season:** From the first kickoff until Week 18 is final, show the active week, lineup rules, scoring system, and every team sorted by weekly points descending, then team name ascending. Show each provided X handle as a link to `https://x.com/{handle}`. Reveal lineups only after that week's first kickoff.
+2. **In season:** From the first kickoff until Week 18 is final, show the active week, lineup rules, scoring system, and every team sorted by weekly points descending, then team name ascending. Show each provided X handle as a link to `https://x.com/{handle}`. Before the first kickoff, the public API returns no team standings and the website renders neither team identities nor lineups. Reveal both only after kickoff.
 3. **Final:** After Week 18 is final, show the lineup rules, scoring system, and every team ranked by season points, including its linked X handle when provided.
 
 Use React and shadcn. The design must be modern, clean, responsive, and focused on the competition. Do not provide a player picker or any lineup mutation control.
