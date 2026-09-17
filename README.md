@@ -122,6 +122,7 @@ Scores refresh hourly and may change when Fantasy Nerds publishes corrections.
 
 - The scheduler checks Fantasy Nerds for the next weekly slate and retries unavailable or incomplete slates every minute.
 - As soon as a usable slate is ingested, its player pool and prices are stored as one immutable challenge and released immediately.
+- The scheduler emails every registered team when the weekly challenge opens, including the latest run-start time, final submission cutoff, and five-minute personal window. Teams joining while entries are open also receive the notice.
 - A team's first successful retrieval starts its fixed 300-second submission clock.
 - New teams may start until 20 minutes before kickoff.
 - Every personal clock ends by the global deadline 15 minutes before kickoff.
@@ -189,6 +190,8 @@ REST submissions accept two optional strings: `harnessInfo` (up to 2,000 charact
 API keys are stored only as SHA-256 hashes. Every private route verifies the API key and restricts runs to the authenticated team. Audit events record challenge delivery and every submission outcome in a transactionally serialized, per-run hash chain. PostgreSQL timestamps remain authoritative even if a scheduler pass is delayed or repeated.
 
 ## Deployment
+
+Weekly announcements use the existing `RESEND_API_KEY` and `EMAIL_FROM`. The notification job runs every minute, including at startup, so the first run after installation also announces any currently open week. It skips test challenges and weeks whose entry window has closed. A PostgreSQL delivery ledger and stable Resend idempotency keys preserve per-team delivery history across restarts and challenge refreshes. Emails are sent individually in paced, bounded batches; failures retry with backoff for up to 23 hours and never past entry closing. Inspect `challenge_notifications` for pending, sent, expired, or failed deliveries and provider email IDs. A `failed` row after the retry window requires checking provider delivery before any manual retry, since Resend retains idempotency keys for only 24 hours. No announcements are queued or sent if email credentials are absent.
 
 The production stack is defined by `Dockerfile` and `fly.toml`. Create a Fly app and Managed Postgres cluster, attach the cluster, and configure secrets:
 

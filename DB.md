@@ -53,6 +53,20 @@ One released fantasy contest packet for a season and week.
 - `content_hash` — hash of the released content.
 - `generated_at` — packet generation timestamp.
 
+### `challenge_notifications`
+
+Durable weekly-opening email deliveries. The primary key is `(season, week,
+team_id)`, ensuring one announcement per registered team per week. `team_id`
+references `teams`. There is intentionally no challenge foreign key so packet
+refreshes cannot delete delivery history and trigger duplicate emails.
+
+- `payload` — the immutable sender, recipient, subject, and text used for retries.
+- `entry_closes_at`, `created_at` — announcement validity and creation timestamps.
+- `status` — `pending`, `sent` (accepted by Resend), `expired`, or `failed`.
+- `attempts`, `first_attempt_at`, `next_attempt_at`, `last_error` — retry state.
+- `sent_at`, `provider_email_id` — provider acceptance receipt. This is not an
+  inbox-delivery confirmation.
+
 ### `selections`
 
 The player choices available in a challenge. This is a challenge-specific

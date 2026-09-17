@@ -7,6 +7,7 @@ import { one, transaction } from "./db/postgres";
 import { createChallenge, entryClosesAt, refreshChallenge } from "./services/challenges";
 import { getChallengePlayers, getSeasonSchedule } from "./services/provider";
 import { syncChallengeScores } from "./services/scoring";
+import { reconcileChallengeNotifications } from "./services/challenge-notifications";
 import type { ChallengeRecord, Env } from "./types";
 
 const TICK_INTERVAL_MS = 15_000;
@@ -155,6 +156,13 @@ export function startScheduler(env: Env) {
       intervalMs: 6 * 60 * 60 * 1000,
       nextRunAt: 0,
       run: () => reconcileChallengeSchedule(env),
+    },
+    {
+      name: "challenge-notifications",
+      lockId: 4,
+      intervalMs: RETRY_INTERVAL_MS,
+      nextRunAt: 0,
+      run: () => reconcileChallengeNotifications(env),
     },
     {
       name: "score-sync",

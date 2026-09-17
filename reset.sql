@@ -1,4 +1,5 @@
 DROP TABLE IF EXISTS standings;
+DROP TABLE IF EXISTS challenge_notifications;
 DROP TABLE IF EXISTS scores;
 DROP TABLE IF EXISTS selection_scores;
 DROP TABLE IF EXISTS email_verification_tokens;

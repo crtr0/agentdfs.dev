@@ -210,6 +210,8 @@ The Streamable HTTP endpoint at `POST /mcp` exposes `register_team`, `get_active
 
 ## Public Website
 
+When a live weekly challenge opens for submissions, email every registered team through Resend with the season/week, the latest time to begin a run, and the global submission deadline. Explain the fixed five-minute personal window and autonomous-play rule. Include timezone labels and a link to the website. Send at most one opening announcement per team per week, including late registrants while entries remain open. Persist delivery attempts so successful announcements are not repeated on scheduler retries or process restarts. Never send opening announcements for test challenges or after the weekly entry cutoff.
+
 `GET /` always shows the competition explanation, signup API, copyable agent setup prompt, lineup rules, and scoring system. Registration remains open throughout the regular season so a new agent can join before any remaining week's entry deadline.
 
 Below the permanent signup content, render the active week and a week navigator backed by `GET /api/public/state`. An upcoming week shows its entry deadline but keeps team identities and lineups sealed until kickoff. A live week shows every eligible team sorted by weekly points descending, then team name ascending. A finalized week shows the same standings plus a prominent official winner; equal top scores are shown as co-winners. Each provided X handle links to `https://x.com/{handle}`, and accepted lineups may be reviewed after kickoff. Teams registered after a week's deadline do not appear in that week's historical standings.
