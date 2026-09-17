@@ -46,7 +46,7 @@ adminRoutes.post("/admin/challenges/:id/refresh", async (c) => {
 
 adminRoutes.get("/admin/challenges", async (c) => {
   const id = c.req.query("id")?.trim() ?? "";
-  const challenges = await c.env.DB.query("SELECT id, season, week, status, protocol_version, released_at, deadline_at, first_game_at, salary_cap, content_hash FROM challenges ORDER BY season DESC, week DESC");
+  const challenges = await c.env.DB.query("SELECT id, season, week, status, protocol_version, released_at, deadline_at, first_game_at, salary_cap, content_hash FROM challenges WHERE season > 0 AND week BETWEEN 1 AND 18 ORDER BY season DESC, week DESC");
   const selected = challenges.rows.find((r) => String(r.id) === id);
   const teams = selected ? await c.env.DB.query("SELECT l.team_id, t.team_name, l.total_cost, l.accepted_at, l.lineup_hash FROM lineups l JOIN teams t ON t.id = l.team_id WHERE l.challenge_id = $1 ORDER BY l.accepted_at DESC", [id]) : { rows: [] };
   const selections = selected ? await c.env.DB.query("SELECT selection_id, player_id, name, nfl_team, opponent, position, eligible_slots, price, player_status, game_starts_at FROM selections WHERE challenge_id = $1 ORDER BY game_starts_at, position, name", [id]) : { rows: [] };
@@ -59,7 +59,7 @@ adminRoutes.get("/admin/challenges", async (c) => {
   const detail = selected ? `<h2>Challenge details</h2><p>Status: ${esc(selected.status)} · Protocol: ${esc(selected.protocol_version)} · Salary cap: ${esc(selected.salary_cap)}<br>Released: ${esc(selected.released_at)} · Deadline: ${esc(selected.deadline_at)} · First game: ${esc(selected.first_game_at)}<br>Content hash: ${esc(selected.content_hash)}</p><h3>Submitted lineups</h3>${teams.rows.length ? table(["Team", "Team ID", "Total cost", "Accepted", "Lineup hash"], teams.rows.map((r) => [`<a href="/admin/teams?id=${encodeURIComponent(String(r.team_id))}">${esc(r.team_name)}</a>`, r.team_id, r.total_cost, r.accepted_at, r.lineup_hash])) : "<p class=\"muted\">No accepted lineups.</p>"}` : "<p class=\"muted\">Select a challenge to inspect it.</p>";
   const refreshControl = selected ? `${refreshNotice}<form method="post" action="/admin/challenges/${encodeURIComponent(String(selected.id))}/refresh?redirect=1" onsubmit="return confirm('This will permanently delete the challenge and all associated runs, attempts, audits, and lineups, then re-create it from Fantasy Nerds. Continue?');"><button type="submit">Delete and re-create from Fantasy Nerds</button></form>` : "";
   const selectionView = selected ? `${refreshControl}<h3>Available selections (${selections.rows.length})</h3>${table(["Selection", "Player ID", "Name", "NFL team", "Opponent", "Position", "Eligible slots", "Price", "Status", "Game starts"], selections.rows.map((r) => [r.selection_id, r.player_id, r.name, r.nfl_team, r.opponent, r.position, r.eligible_slots, r.price, r.player_status, r.game_starts_at]))}` : "";
-  return c.html(shell("Challenges", `<h2>Challenges</h2>${table(["Challenge", "ID", "Status", "Released", "Deadline", "Salary cap"], rows)}${selectionView}${detail}`));
+  return c.html(shell("Challenges", `<h2>Challenges</h2>${table(["Challenge", "ID", "Status", "Released", "Deadline", "Salary cap"], rows)}${detail}${selectionView}`));
 });
 
 adminRoutes.post("/admin/teams", async (c) => {
