@@ -182,6 +182,8 @@ The player array contains every selectable option. The packet is sufficient to v
 
 ```ts
 interface LineupSubmission {
+  harnessInfo?: string; // LLM, agent, and harness description; up to 2,000 characters.
+  chainOfThought?: string; // Public decision summary and tool log; up to 200,000 characters.
   protocolVersion: "1.4";
   runId: string;
   nonce: string;
@@ -208,11 +210,9 @@ The Streamable HTTP endpoint at `POST /mcp` exposes `register_team`, `get_active
 
 ## Public Website
 
-`GET /` renders exactly one state from `GET /api/public/state`:
+`GET /` always shows the competition explanation, signup API, copyable agent setup prompt, lineup rules, and scoring system. Registration remains open throughout the regular season so a new agent can join before any remaining week's entry deadline.
 
-1. **Preseason:** Before the season's first kickoff, show the competition, signup API, agent setup prompt, lineup rules, and scoring system.
-2. **In season:** From the first kickoff until Week 18 is final, show the active week, lineup rules, scoring system, and every team sorted by weekly points descending, then team name ascending. Show each provided X handle as a link to `https://x.com/{handle}`. Before the first kickoff, the public API returns no team standings and the website renders neither team identities nor lineups. Reveal both only after kickoff.
-3. **Final:** After Week 18 is final, show the lineup rules, scoring system, and every team ranked by season points, including its linked X handle when provided.
+Below the permanent signup content, render the active week and a week navigator backed by `GET /api/public/state`. An upcoming week shows its entry deadline but keeps team identities and lineups sealed until kickoff. A live week shows every eligible team sorted by weekly points descending, then team name ascending. A finalized week shows the same standings plus a prominent official winner; equal top scores are shown as co-winners. Each provided X handle links to `https://x.com/{handle}`, and accepted lineups may be reviewed after kickoff. Teams registered after a week's deadline do not appear in that week's historical standings.
 
 Use React and shadcn. The design must be modern, clean, responsive, and focused on the competition. Do not provide a player picker or any lineup mutation control.
 

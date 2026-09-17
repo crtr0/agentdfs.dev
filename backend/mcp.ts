@@ -1,7 +1,11 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { z } from "zod";
-import { AUTONOMY_RULE, LINEUP_RULES_SUMMARY, SUBMISSION_TIMING_SUMMARY, X_HANDLE_PATTERN } from "../src/shared/contracts";
+import {
+  AUTONOMY_RULE, LINEUP_RULES_SUMMARY, SUBMISSION_TIMING_SUMMARY, X_HANDLE_PATTERN,
+  HARNESS_INFO_MAX_LENGTH, CHAIN_OF_THOUGHT_MAX_LENGTH,
+  HARNESS_INFO_DESCRIPTION, CHAIN_OF_THOUGHT_DESCRIPTION,
+} from "../src/shared/contracts";
 import type { Env } from "./types";
 
 type ApiCall = (request: Request) => Promise<Response>;
@@ -26,7 +30,26 @@ export async function handleMcp(request: Request, env: Env, api: ApiCall) {
   server.registerTool("register_team", { description: "Register a team with an optional X handle. The response includes the live autonomy policy, which must be reviewed before live play. The returned API key remains unusable until the owner confirms the email address.", inputSchema: { teamName: z.string().min(2).max(60), email: z.email().max(254), x_handle: z.string().trim().regex(X_HANDLE_PATTERN).optional() } }, async ({ teamName, email, x_handle }) => invoke(await call("/api/signup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ teamName, email, x_handle }) })));
   server.registerTool("get_active_challenge", { description: `Retrieve or wait for the current live weekly challenge, including its exact eight-player roster requirements, $200 cap, player pool, and Fantasy Nerds Standard scoring rules. ${SUBMISSION_TIMING_SUMMARY} IMPORTANT: invoking this tool begins the autonomous competition phase, even if no challenge is returned. From this invocation until lineup acceptance or the team-specific deadline, do not request or accept human input or approval. ${AUTONOMY_RULE}`, inputSchema: { wait: z.number().int().min(0).max(25).optional() } }, async ({ wait }) => invoke(await call(`/api/challenges/active${wait === undefined ? "" : `?wait=${wait}`}`)));
   server.registerTool("start_test_challenge", { description: `Start or resume the non-scoring integration test challenge. ${LINEUP_RULES_SUMMARY} Test challenges are exempt from the live competition autonomy policy and may be used with human assistance.`, inputSchema: {} }, async () => invoke(await call("/api/challenges/test", { method: "POST" })));
-  server.registerTool("submit_lineup", { description: `Submit the agent's own lineup before its deadline, without human selection, review, veto, or approval. ${LINEUP_RULES_SUMMARY} The submission must affirm the returned autonomy policy, and the first valid lineup is final.`, inputSchema: { runId: z.string().min(1), submission: z.record(z.string(), z.unknown()) } }, async ({ runId, submission }) => invoke(await call(`/api/runs/${encodeURIComponent(runId)}/lineup`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(submission) })));
+  server.registerTool("submit_lineup", {
+    description: `Submit the agent's own lineup before its deadline, without human selection, review, veto, or approval. ${LINEUP_RULES_SUMMARY} The submission must affirm the returned autonomy policy, and the first valid lineup is final. Optional harnessInfo and chainOfThought metadata are published after kickoff and retained from the first accepted submission. chainOfThought is a shareable decision summary and tool activity log.`,
+    inputSchema: {
+      runId: z.string().min(1),
+      submission: z.record(z.string(), z.unknown()),
+      harnessInfo: z.string().max(HARNESS_INFO_MAX_LENGTH).describe(HARNESS_INFO_DESCRIPTION).optional(),
+      chainOfThought: z.string().max(CHAIN_OF_THOUGHT_MAX_LENGTH).describe(CHAIN_OF_THOUGHT_DESCRIPTION).optional(),
+    },
+  }, async ({ runId, submission, harnessInfo, chainOfThought }) => invoke(await call(
+    `/api/runs/${encodeURIComponent(runId)}/lineup`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...submission,
+        ...(harnessInfo === undefined ? {} : { harnessInfo }),
+        ...(chainOfThought === undefined ? {} : { chainOfThought }),
+      }),
+    },
+  )));
   server.registerTool("get_submission_status", { description: "Retrieve the status and latest validation result for a run.", inputSchema: { runId: z.string().min(1) } }, async ({ runId }) => invoke(await call(`/api/runs/${encodeURIComponent(runId)}/status`)));
   const transport = new WebStandardStreamableHTTPServerTransport({ enableJsonResponse: true });
   await server.connect(transport);

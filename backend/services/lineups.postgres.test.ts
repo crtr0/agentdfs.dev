@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import type { Pool } from "pg";
 import { newDb } from "pg-mem";
 import { describe, expect, it } from "vitest";
-import { AUTONOMY_POLICY, PROTOCOL_VERSION, type ChallengePlayer } from "../../src/shared/contracts";
+import { AUTONOMY_POLICY, PROTOCOL_VERSION, HARNESS_INFO_MAX_LENGTH, CHAIN_OF_THOUGHT_MAX_LENGTH, type ChallengePlayer } from "../../src/shared/contracts";
 import { createChallenge, getOrCreateRun } from "./challenges";
 import { submitLineup } from "./lineups";
 import type { TeamRecord } from "../types";
@@ -25,7 +25,7 @@ function selected(players: ChallengePlayer[], playerId: string, slot: string) {
 }
 
 describe("PostgreSQL lineup acceptance", () => {
-  it("preserves first-writer acceptance and idempotency", async () => {
+  it.each([false, true])("preserves first-writer acceptance and idempotency with metadata=%s", async (withMetadata) => {
     const database = testDatabase();
     const team: TeamRecord = {
       id: "team_postgres",
@@ -73,7 +73,24 @@ describe("PostgreSQL lineup acceptance", () => {
         affirmed: true,
       },
       lineup,
+      ...(withMetadata ? {
+        harnessInfo: "Example LLM / Agent / Harness",
+        chainOfThought: "Compared projections.\nTool: retrieved player availability.\nSelected an eligible lineup.",
+      } : {}),
     });
+
+    for (const metadata of [
+      { harnessInfo: 123 },
+      { chainOfThought: [] },
+      { harnessInfo: "a".repeat(HARNESS_INFO_MAX_LENGTH + 1) },
+      { chainOfThought: "a".repeat(CHAIN_OF_THOUGHT_MAX_LENGTH + 1) },
+    ]) {
+      const invalid = await submitLineup({
+        db: database, routeRunId: run.id, teamId: team.id,
+        rawBody: JSON.stringify({ ...JSON.parse(body), ...metadata }), receivedAt, transport: "https",
+      });
+      expect(invalid.status).toBe(422);
+    }
 
     const accepted = await submitLineup({
       db: database,
@@ -89,7 +106,7 @@ describe("PostgreSQL lineup acceptance", () => {
       db: database,
       routeRunId: run.id,
       teamId: team.id,
-      rawBody: body,
+      rawBody: JSON.stringify({ ...JSON.parse(body), harnessInfo: "Replacement", chainOfThought: "Replacement" }),
       receivedAt,
       transport: "https",
     });
@@ -134,8 +151,8 @@ describe("PostgreSQL lineup acceptance", () => {
     for (const [table, expected] of [
       ["lineups", 1],
       ["lineup_players", 8],
-      ["attempts", 4],
-      ["audit_events", 4],
+      ["attempts", 8],
+      ["audit_events", 8],
     ] as const) {
       const count = await database.query<{ count: number }>(`SELECT COUNT(*)::INTEGER AS count FROM ${table}`);
       expect(count.rows[0]?.count).toBe(expected);
@@ -149,6 +166,11 @@ describe("PostgreSQL lineup acceptance", () => {
         policyVersion: AUTONOMY_POLICY.version,
         affirmed: true,
       },
+    });
+    const stored = await database.query("SELECT harness_info, chain_of_thought FROM lineups");
+    expect(stored.rows[0]).toEqual({
+      harness_info: withMetadata ? JSON.parse(body).harnessInfo : null,
+      chain_of_thought: withMetadata ? JSON.parse(body).chainOfThought : null,
     });
     await database.end();
   });

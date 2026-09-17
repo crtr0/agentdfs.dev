@@ -1,6 +1,8 @@
 import { z } from "zod";
 import {
   AUTONOMY_POLICY,
+  HARNESS_INFO_MAX_LENGTH,
+  CHAIN_OF_THOUGHT_MAX_LENGTH,
   PROTOCOL_VERSION,
   ROSTER_RULES,
   SALARY_CAP,
@@ -15,6 +17,8 @@ import { appendAuditEvent } from "./audit";
 import type { ChallengeRecord, RunRecord } from "../types";
 
 const submissionSchema = z.object({
+  harnessInfo: z.string().max(HARNESS_INFO_MAX_LENGTH).optional(),
+  chainOfThought: z.string().max(CHAIN_OF_THOUGHT_MAX_LENGTH).optional(),
   protocolVersion: z.string(),
   runId: z.string().min(1),
   nonce: z.string().min(1),
@@ -281,8 +285,8 @@ export async function submitLineup(input: {
   await transaction(input.db, async (client) => {
     await client.query(
       `INSERT INTO lineups
-        (id, run_id, team_id, challenge_id, season, week, total_cost, lineup_hash, accepted_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        (id, run_id, team_id, challenge_id, season, week, total_cost, lineup_hash, accepted_at, harness_info, chain_of_thought)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        ON CONFLICT DO NOTHING`,
       [
         lineupId,
@@ -294,6 +298,8 @@ export async function submitLineup(input: {
         validation.totalCost,
         lineupHash,
         input.receivedAt,
+        parsed.data.harnessInfo ?? null,
+        parsed.data.chainOfThought ?? null,
       ],
     );
 

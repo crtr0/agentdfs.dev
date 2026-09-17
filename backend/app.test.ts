@@ -5,7 +5,13 @@ import { newDb } from "pg-mem";
 import { describe, expect, it, vi } from "vitest";
 import { createApp } from "./app";
 import type { Env } from "./types";
-import { AUTONOMY_POLICY, CONTEST_RULES, type ChallengeResponse } from "../src/shared/contracts";
+import {
+  AUTONOMY_POLICY,
+  CONTEST_RULES,
+  type ChallengeResponse,
+  type PublicLineupResponse,
+  type PublicStateResponse,
+} from "../src/shared/contracts";
 import { createChallenge } from "./services/challenges";
 
 function application() {
@@ -140,12 +146,67 @@ describe("Node application", () => {
 
     env.SEASON_START_AT = "2020-01-01T00:00:00Z";
     const publicState = await app.request("/api/public/state", {}, env);
-    expect(await publicState.json()).toMatchObject({
-      challenge: { teamsRevealed: true, lineupRevealed: true },
+    const publicStateBody = await publicState.json() as PublicStateResponse;
+    expect(publicStateBody.weeks.find((week) => week.week === 1)).toMatchObject({
+      week: 1,
+      teamsRevealed: true,
+      lineupRevealed: true,
       standings: [{ teamName: "Signup Test", xHandle: "Signup_Test" }],
     });
     await database.end();
     vi.restoreAllMocks();
+  });
+
+  it("publishes weekly winners and excludes teams that joined after that week's deadline", async () => {
+    const { app, database, env } = application();
+    env.SEASON_START_AT = "2020-01-01T00:00:00Z";
+    await database.query(
+      `INSERT INTO teams
+        (id, team_name, normalized_name, email, normalized_email, api_key_hash, created_at)
+       VALUES
+        ('team_winner', 'Weekly Winner', 'weekly winner', 'winner@example.test', 'winner@example.test', 'hash_1', '2026-09-01T00:00:00Z'),
+        ('team_runner_up', 'Runner Up', 'runner up', 'runner@example.test', 'runner@example.test', 'hash_2', '2026-09-02T00:00:00Z'),
+        ('team_late', 'Late Arrival', 'late arrival', 'late@example.test', 'late@example.test', 'hash_3', '2026-09-11T00:00:00Z')`,
+    );
+    await createChallenge(database, {
+      id: "challenge_final_week",
+      season: 2026,
+      week: 1,
+      releasedAt: "2026-09-01T00:00:00Z",
+      deadlineAt: "2026-09-10T00:05:00Z",
+      firstGameAt: "2026-09-10T00:20:00Z",
+    });
+    await database.query("UPDATE challenges SET status = 'final' WHERE id = 'challenge_final_week'");
+    await database.query(
+      `INSERT INTO runs
+        (id, challenge_id, team_id, nonce, deadline_at, status, first_delivered_at, accepted_at, accepted_lineup_hash)
+       VALUES
+        ('run_winner', 'challenge_final_week', 'team_winner', 'nonce_1', '2026-09-10T00:05:00Z', 'accepted', '2026-09-01T00:00:00Z', '2026-09-01T00:01:00Z', 'lineup_1'),
+        ('run_runner_up', 'challenge_final_week', 'team_runner_up', 'nonce_2', '2026-09-10T00:05:00Z', 'accepted', '2026-09-02T00:00:00Z', '2026-09-02T00:01:00Z', 'lineup_2')`,
+    );
+    await database.query(
+      `INSERT INTO scores (team_id, season, week, points, updated_at)
+       VALUES
+        ('team_winner', 2026, 1, 27.5, NOW()),
+        ('team_runner_up', 2026, 1, 19.25, NOW()),
+        ('team_late', 2026, 1, 99, NOW())`,
+    );
+
+    const response = await app.request("/api/public/state", {}, env);
+    expect(response.status).toBe(200);
+    const body = await response.json() as PublicStateResponse;
+    expect(body.weeks).toHaveLength(1);
+    expect(body.weeks[0]).toMatchObject({
+      week: 1,
+      status: "final",
+      standings: [
+        { rank: 1, teamName: "Weekly Winner", weeklyPoints: 27.5 },
+        { rank: 2, teamName: "Runner Up", weeklyPoints: 19.25 },
+      ],
+      winners: [{ rank: 1, teamName: "Weekly Winner", weeklyPoints: 27.5 }],
+    });
+    expect(body.weeks[0]?.standings.map((team) => team.teamName)).not.toContain("Late Arrival");
+    await database.end();
   });
 
   it("rejects invalid X handles", async () => {
@@ -157,6 +218,89 @@ describe("Node application", () => {
     }, env);
     expect(signup.status).toBe(400);
     expect(await signup.json()).toMatchObject({ error: { code: "INVALID_SIGNUP" } });
+    await database.end();
+  });
+
+  it("returns game times and available Fantasy Nerds points for revealed lineup players", async () => {
+    const { app, database, env } = application();
+    env.SEASON_START_AT = "2026-09-10T00:20:00Z";
+    await database.query(
+      `INSERT INTO teams
+        (id, team_name, normalized_name, email, normalized_email, api_key_hash, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      ["team_public_lineup", "Public Lineup", "public lineup", "public@example.test",
+        "public@example.test", "public_hash", "2026-09-01T00:00:00Z"],
+    );
+    const challenge = await createChallenge(database, {
+      id: "challenge_2026_1",
+      season: 2026,
+      week: 1,
+      releasedAt: "2026-09-01T00:00:00Z",
+      deadlineAt: "2026-09-10T00:05:00Z",
+      firstGameAt: "2026-09-09T20:20:00Z",
+    });
+    const [scoredPlayer, unscoredPlayer] = challenge.packet.players;
+    await database.query(
+      `INSERT INTO runs
+        (id, challenge_id, team_id, nonce, deadline_at, status, first_delivered_at,
+         accepted_at, accepted_lineup_hash)
+       VALUES ($1, $2, $3, $4, $5, 'accepted', $6, $7, $8)`,
+      ["run_public_lineup", challenge.id, "team_public_lineup", "nonce", "2026-09-10T00:05:00Z",
+        "2026-09-01T00:00:00Z", "2026-09-01T00:01:00Z", "lineup_hash"],
+    );
+    await database.query(
+      `INSERT INTO lineups
+        (id, run_id, team_id, challenge_id, season, week, total_cost, lineup_hash, accepted_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      ["lineup_public", "run_public_lineup", "team_public_lineup", challenge.id, 2026, 1,
+        scoredPlayer!.price + unscoredPlayer!.price, "lineup_hash", "2026-09-01T00:01:00Z"],
+    );
+    await database.query(
+      `INSERT INTO lineup_players (lineup_id, selection_id, player_id, slot)
+       VALUES ($1, $2, $3, 'QB'), ($1, $4, $5, 'RB')`,
+      ["lineup_public", scoredPlayer!.selectionId, scoredPlayer!.playerId,
+        unscoredPlayer!.selectionId, unscoredPlayer!.playerId],
+    );
+    const harnessInfo = "Example model / autonomous agent / local harness";
+    const chainOfThought = "Compared projected points and salary.\nTool log: checked player status.\n<script>example text</script>";
+    await database.query(
+      "UPDATE lineups SET harness_info = $1, chain_of_thought = $2 WHERE id = 'lineup_public'",
+      [harnessInfo, chainOfThought],
+    );
+    await database.query(
+      `INSERT INTO selection_scores (challenge_id, selection_id, points, updated_at)
+       VALUES ($1, $2, $3, $4)`,
+      [challenge.id, scoredPlayer!.selectionId, 12.34, "2026-09-10T03:00:00Z"],
+    );
+
+    const response = await app.request("/api/public/lineups/team_public_lineup/1", {}, env);
+    expect(response.status).toBe(200);
+    const body = await response.json() as PublicLineupResponse;
+    expect(body).toMatchObject({ harnessInfo, chainOfThought });
+    const publicState = await app.request("/api/public/state", {}, env);
+    const publicBody = await publicState.json() as PublicStateResponse;
+    expect(publicBody.weeks[0]?.standings[0]?.harnessInfo).toBe(harnessInfo);
+    expect(JSON.stringify(publicBody)).not.toContain("chainOfThought");
+
+    env.SEASON_START_AT = "2099-09-10T00:20:00Z";
+    const sealedState = await app.request("/api/public/state", {}, env);
+    const sealedBody = await sealedState.json() as PublicStateResponse;
+    expect(sealedBody.weeks[0]?.standings).toEqual([]);
+    expect(JSON.stringify(sealedBody)).not.toContain(harnessInfo);
+    const sealedLineup = await app.request("/api/public/lineups/team_public_lineup/1", {}, env);
+    expect(sealedLineup.status).toBe(403);
+    expect(body.players).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        selectionId: scoredPlayer!.selectionId,
+        gameStartsAt: "2026-09-10T00:20:00.000Z",
+        points: 12.34,
+      }),
+      expect.objectContaining({
+        selectionId: unscoredPlayer!.selectionId,
+        gameStartsAt: "2026-09-10T00:20:00.000Z",
+        points: null,
+      }),
+    ]));
     await database.end();
   });
 

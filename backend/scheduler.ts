@@ -129,7 +129,8 @@ export async function reconcileChallengeLifecycle(env: Env, now = new Date().toI
 export async function reconcileScores(env: Env, now = new Date().toISOString()) {
   const challenges = await env.DB.query<ChallengeRecord>(
     `SELECT * FROM challenges
-     WHERE first_game_at <= $1 AND status != 'final'
+     WHERE season > 0 AND week BETWEEN 1 AND 18
+       AND first_game_at <= $1 AND status != 'final'
      ORDER BY season, week`,
     [now],
   );

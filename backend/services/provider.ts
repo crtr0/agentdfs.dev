@@ -3,8 +3,8 @@ import { fixturePlayers, FIXTURE_PLAYER_POOL } from "../fixtures/players";
 import type { Env } from "../types";
 
 interface FantasyScheduleGame {
-  season: number;
-  week: number;
+  season: number | string;
+  week: number | string;
   game_date?: string | null;
   home_team?: string | null;
   away_team?: string | null;
@@ -115,13 +115,15 @@ export async function getSeasonSchedule(env: Env, season: number): Promise<WeekS
   const games = scheduleResponse.schedule ?? [];
   const weeks = new Map<number, number>();
   for (const game of games) {
-    if (game.week < 1 || game.week > 18) continue;
+    const gameSeason = Number(game.season);
+    const gameWeek = Number(game.week);
+    if (gameSeason !== season || gameWeek < 1 || gameWeek > 18) continue;
     const value = game.game_date;
     if (!value) continue;
     const timestamp = parseFantasyNerdsDateTime(value);
-    const existing = weeks.get(game.week);
+    const existing = weeks.get(gameWeek);
     if (!Number.isNaN(timestamp) && (existing === undefined || timestamp < existing)) {
-      weeks.set(game.week, timestamp);
+      weeks.set(gameWeek, timestamp);
     }
   }
   return [...weeks.entries()]
@@ -156,7 +158,9 @@ export async function getChallengePlayers(
     providerFetchJson<FantasyNerdsScheduleResponse>(env, "/v1/nfl/schedule"),
   ]);
   const entries = (dfs.players ?? dfs.data ?? []) as Array<Record<string, unknown>>;
-  const games = (scheduleResponse.schedule ?? []).filter((game) => Number(game.week) === week);
+  const games = (scheduleResponse.schedule ?? []).filter((game) => (
+    Number(game.season) === season && Number(game.week) === week
+  ));
 
   const players = entries.flatMap((entry, index) => {
     const rawPosition = String(entry.position ?? "").split(/[,/]/)[0].trim();
@@ -218,6 +222,8 @@ export async function getWeekScores(env: Env, season: number, week: number): Pro
     const total = Number(player.points);
     if (Number.isFinite(total)) points.set(`fantasynerds_${player.playerId}`, total);
   }
-  const games = (scheduleResponse.schedule ?? []).filter((game) => game.season === season && game.week === week);
+  const games = (scheduleResponse.schedule ?? []).filter((game) => (
+    Number(game.season) === season && Number(game.week) === week
+  ));
   return { points, allFinal: games.length > 0 && games.every((game) => Boolean(game.winner)) };
 }

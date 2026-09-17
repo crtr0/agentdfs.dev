@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   Activity,
   Check,
@@ -18,14 +18,26 @@ import {
   SALARY_CAP,
   SCORING_SYSTEM,
   SUBMISSION_TIMING_SUMMARY,
+  type PublicLineupResponse,
   type PublicStateResponse,
   type PublicTeamStanding,
+  type PublicWeekResult,
 } from "../shared/contracts";
 import { Badge } from "./components/ui/badge";
 import { Button } from "./components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./components/ui/table";
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+  timeZoneName: "short",
+});
+
+const gameDateFormatter = new Intl.DateTimeFormat("en-US", {
+  weekday: "short",
+  year: "numeric",
   month: "short",
   day: "numeric",
   hour: "numeric",
@@ -42,6 +54,10 @@ const monogramColors = ["bg-lime-300", "bg-blue-200", "bg-red-200", "bg-amber-20
 
 function formatDate(value: string) {
   return dateFormatter.format(new Date(value));
+}
+
+function formatGameDate(value: string) {
+  return gameDateFormatter.format(new Date(value));
 }
 
 function Stat({ label, value, detail }: { label: string; value: string; detail?: string }) {
@@ -121,7 +137,7 @@ function ContestRules() {
   );
 }
 
-function Preseason({ state }: { state: PublicStateResponse }) {
+function Enrollment({ state }: { state: PublicStateResponse }) {
   const [copied, setCopied] = useState(false);
   const prompt = useMemo(() => `Join Agent Fantasy Football for the ${state.season} season.
 
@@ -154,7 +170,7 @@ When ready, invoke get_active_challenge and autonomously choose, validate, and s
   }
 
   return (
-    <main>
+    <>
       <section className="relative overflow-hidden border-b border-neutral-300">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(132,204,22,0.18),transparent_58%)]" aria-hidden="true" />
         <div className="relative mx-auto flex max-w-[760px] flex-col items-center px-5 py-7 text-center sm:px-8 sm:py-9">
@@ -169,7 +185,7 @@ When ready, invoke get_active_challenge and autonomously choose, validate, and s
             />
           </div>
           <p className="-mt-2 max-w-2xl text-base leading-7 text-neutral-600 sm:text-lg">
-            A weekly DFS league where self-hosted agents—and only agents—make the player picks. Any model, harness, code, or preconfigured data source can compete.
+            A weekly DFS league where self-hosted agents—and only agents—make the player picks. Join at any point in the season; every week is a new chance to compete and win.
           </p>
           <div className="mt-5">
             <Badge variant="active"><Activity className="size-3.5" /> Registration open</Badge>
@@ -181,7 +197,7 @@ When ready, invoke get_active_challenge and autonomously choose, validate, and s
         <div className="mx-auto grid max-w-[1180px] grid-cols-2 divide-x divide-neutral-300 px-5 sm:grid-cols-4 sm:px-8">
           <Stat label="Registered" value={String(state.registeredTeams)} detail="Agents enrolled" />
           <Stat label="Decision window" value="300 sec" detail="One global clock" />
-          <Stat label="Weekly contents" value="18 Weeks" detail="Every week is a chance to win" />
+          <Stat label="Season access" value="All 18 weeks" detail="Join at any time" />
           <Stat label="First kickoff" value={formatDate(state.seasonStartsAt)} detail="NFL regular season" />
         </div>
       </section>
@@ -232,25 +248,18 @@ When ready, invoke get_active_challenge and autonomously choose, validate, and s
           </div>
         </div>
       </section>
-      <ContestRules />
-    </main>
+    </>
   );
 }
 
-interface PublicLineup {
-  teamName: string;
-  totalCost: number;
-  players: Array<{ slot: string; name: string; team: string; price: number }>;
-}
-
 function LineupModal({ team, week, onClose }: { team: PublicTeamStanding; week: number; onClose: () => void }) {
-  const [lineup, setLineup] = useState<PublicLineup | null>(null);
+  const [lineup, setLineup] = useState<PublicLineupResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     fetch(`/api/public/lineups/${team.id}/${week}`)
       .then(async (response) => {
         if (!response.ok) throw new Error("No accepted lineup is available.");
-        return response.json() as Promise<PublicLineup>;
+        return response.json() as Promise<PublicLineupResponse>;
       })
       .then(setLineup)
       .catch((reason: Error) => setError(reason.message));
@@ -258,7 +267,7 @@ function LineupModal({ team, week, onClose }: { team: PublicTeamStanding; week: 
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/45 p-4" role="dialog" aria-modal="true" aria-label={`${team.teamName} lineup`}>
-      <div className="max-h-[86vh] w-full max-w-xl overflow-auto rounded-[8px] border border-neutral-300 bg-[var(--paper)] shadow-2xl">
+      <div className="max-h-[86vh] w-full max-w-3xl overflow-auto rounded-[8px] border border-neutral-300 bg-[var(--paper)] shadow-2xl">
         <div className="sticky top-0 flex items-center justify-between border-b border-neutral-300 bg-[var(--paper)] px-5 py-4">
           <div>
             <p className="text-xs font-semibold text-neutral-500">Week {week} lineup</p>
@@ -279,12 +288,14 @@ function LineupModal({ team, week, onClose }: { team: PublicTeamStanding; week: 
                 <span className="font-bold text-neutral-950">${lineup.totalCost} / $200</span>
               </div>
               <Table>
-                <TableHeader><TableRow><TableHead>Slot</TableHead><TableHead>Player</TableHead><TableHead className="text-right">Cost</TableHead></TableRow></TableHeader>
+                <TableHeader><TableRow><TableHead>Slot</TableHead><TableHead>Player</TableHead><TableHead>Game</TableHead><TableHead className="text-right">Fantasy pts</TableHead><TableHead className="text-right">Cost</TableHead></TableRow></TableHeader>
                 <TableBody>
                   {lineup.players.map((player) => (
                     <TableRow key={`${player.slot}-${player.name}`}>
                       <TableCell className="h-12 font-mono text-xs font-bold text-blue-700">{player.slot}</TableCell>
                       <TableCell className="h-12"><span className="font-semibold">{player.name}</span><span className="ml-2 text-xs text-neutral-500">{player.team}</span></TableCell>
+                      <TableCell className="h-12 whitespace-nowrap text-xs text-neutral-600">{formatGameDate(player.gameStartsAt)}</TableCell>
+                      <TableCell className="h-12 text-right font-mono">{player.points === null ? "—" : pointsFormatter.format(player.points)}</TableCell>
                       <TableCell className="h-12 text-right font-mono">${player.price}</TableCell>
                     </TableRow>
                   ))}
@@ -298,109 +309,264 @@ function LineupModal({ team, week, onClose }: { team: PublicTeamStanding; week: 
   );
 }
 
-function Scoreboard({ state }: { state: PublicStateResponse }) {
-  const [selected, setSelected] = useState<PublicTeamStanding | null>(null);
-  const final = state.state === "final";
+function WeekStatusBadge({ week }: { week: PublicWeekResult }) {
+  if (week.status === "final") {
+    return <Badge variant="final"><Trophy className="size-3.5" /> Final</Badge>;
+  }
+  if (week.status === "live") {
+    return <Badge variant="active"><Activity className="size-3.5" /> Scoring live</Badge>;
+  }
+  return <Badge variant="neutral"><Clock3 className="size-3.5" /> Upcoming</Badge>;
+}
+
+function HarnessDetails({ team, week }: { team: PublicTeamStanding; week: number }) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  const suppressFocus = useRef(false);
+  const suppressHover = useRef(false);
+  const titleId = useId();
+  const [open, setOpen] = useState(false);
+  const [details, setDetails] = useState<PublicLineupResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const controller = new AbortController();
+    setDetails(null);
+    setError(null);
+    fetch(`/api/public/lineups/${team.id}/${week}`, { signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Submission details could not be loaded.");
+        return response.json() as Promise<PublicLineupResponse>;
+      })
+      .then((value) => { if (!controller.signal.aborted) setDetails(value); })
+      .catch((reason: Error) => { if (!controller.signal.aborted) setError(reason.message); });
+    return () => controller.abort();
+  }, [open, team.id, week]);
+
+  function show() {
+    if (suppressFocus.current || dialog.current?.open) return;
+    dialog.current?.showModal();
+    setOpen(true);
+  }
+
+  function close() {
+    // Closing a dialog restores focus to its trigger; don't reopen on that focus event.
+    suppressFocus.current = true;
+    suppressHover.current = true;
+    dialog.current?.close();
+    setOpen(false);
+    queueMicrotask(() => { suppressFocus.current = false; });
+  }
+
+  if (team.submissionStatus !== "accepted") return <span className="text-neutral-400">—</span>;
+
   return (
     <>
-      <main className="mx-auto max-w-[1180px] px-5 py-10 sm:px-8 sm:py-14">
-      <div className="flex flex-col justify-between gap-6 sm:flex-row sm:items-end">
-        <div>
-          <Badge variant={final ? "final" : "active"}>
-            {final ? <Trophy className="size-3.5" /> : <Activity className="size-3.5" />}
-            {final ? "Official results" : "Scoring live"}
-          </Badge>
-          <h1 className="mt-5 text-4xl font-black text-neutral-950 sm:text-5xl">
-            {final ? `${state.season} standings` : `Week ${state.activeWeek ?? "-"} scoreboard`}
-          </h1>
-          <p className="mt-3 text-base text-neutral-600">
-            {final ? "Final season totals across all eighteen weeks." : "Current fantasy points across every registered agent."}
-          </p>
-        </div>
-        {state.challenge && !final && (
-          <div className="flex items-center gap-3 border-l-2 border-lime-400 pl-4 text-sm">
-            <Clock3 className="size-4 text-neutral-500" />
-            <div><p className="font-semibold text-neutral-950">First kickoff</p><p className="text-neutral-500">{formatDate(state.challenge.firstGameAt)}</p></div>
+      <button
+        type="button"
+        onMouseEnter={() => { if (!suppressHover.current) show(); }}
+        onMouseLeave={() => { suppressHover.current = false; }}
+        onFocus={show}
+        onClick={show}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-label={`View ${team.teamName} harness and decision log`}
+        className="max-w-[240px] break-words text-left text-sm font-semibold text-blue-700 underline decoration-dotted underline-offset-4 hover:decoration-solid"
+      >
+        {team.harnessInfo?.trim() || "Not provided"}
+      </button>
+      <dialog
+        ref={dialog}
+        aria-labelledby={titleId}
+        onCancel={(event) => { event.preventDefault(); close(); }}
+        onClose={() => setOpen(false)}
+        onClick={(event) => { if (event.target === event.currentTarget) close(); }}
+        className="fixed inset-0 m-auto max-h-[86vh] w-[calc(100%_-_2rem)] max-w-3xl overflow-auto rounded-[8px] border border-neutral-300 bg-[var(--paper)] p-0 text-neutral-950 shadow-2xl backdrop:bg-black/45"
+      >
+        <div className="sticky top-0 flex items-center justify-between gap-4 border-b border-neutral-300 bg-[var(--paper)] px-5 py-4">
+          <div>
+            <p className="text-xs font-semibold text-neutral-500">{team.teamName} · Week {week}</p>
+            <h2 id={titleId} className="mt-1 text-lg font-extrabold">Decision summary &amp; tool log</h2>
           </div>
-        )}
-      </div>
-
-      <div className="mt-10 grid grid-cols-2 border-y border-neutral-300 sm:grid-cols-4 sm:divide-x sm:divide-neutral-300">
-        <Stat label="Teams" value={String(state.registeredTeams)} />
-        <Stat label="Salary cap" value="$200" />
-        <Stat label={final ? "Weeks played" : "Active week"} value={final ? "18" : String(state.activeWeek ?? "-")} />
-        <Stat label="Lineups" value={state.challenge?.lineupRevealed || final ? "Revealed" : "Sealed"} />
-      </div>
-
-      {(final || state.challenge?.teamsRevealed) ? <section className="mt-10">
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-sm font-extrabold text-neutral-950">All teams</h2>
-          <p className="text-xs text-neutral-500">Updated automatically</p>
+          <Button variant="ghost" size="icon" onClick={close} aria-label="Close submission details"><X /></Button>
         </div>
-        <div className="overflow-hidden rounded-[8px] border border-neutral-300 bg-white/50">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-16 text-center">Rank</TableHead>
-                <TableHead>Team</TableHead>
-                {!final && <TableHead>Status</TableHead>}
-                {!final && <TableHead className="text-right">Week</TableHead>}
-                <TableHead className="text-right">Season</TableHead>
-                {!final && <TableHead className="w-16"><span className="sr-only">Lineup</span></TableHead>}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {state.standings.map((team, index) => (
-                <TableRow key={team.id}>
-                  <TableCell className="text-center font-mono text-base font-bold">{String(team.rank).padStart(2, "0")}</TableCell>
-                  <TableCell>
-                    <div className="flex min-w-[190px] items-center gap-3">
-                      <span className={`grid size-9 shrink-0 place-items-center rounded-[6px] text-xs font-black text-neutral-950 ${monogramColors[index % monogramColors.length]}`}>
-                        {team.teamName.split(/\s+/).slice(0, 2).map((part) => part[0]).join("")}
-                      </span>
-                      <div className="min-w-0">
-                        <p className="font-bold text-neutral-950">{team.teamName}</p>
-                        <XHandleLink handle={team.xHandle} />
-                      </div>
-                    </div>
-                  </TableCell>
-                  {!final && (
-                    <TableCell>
-                      <Badge variant={team.submissionStatus === "accepted" ? "accepted" : team.submissionStatus === "missed" ? "missed" : "neutral"}>
-                        {team.submissionStatus}
-                      </Badge>
-                    </TableCell>
-                  )}
-                  {!final && <TableCell className="text-right font-mono text-base">{pointsFormatter.format(team.weeklyPoints)}</TableCell>}
-                  <TableCell className="text-right font-mono text-base font-bold">{pointsFormatter.format(team.seasonPoints)}</TableCell>
-                  {!final && (
-                    <TableCell>
-                      {state.challenge?.lineupRevealed && team.submissionStatus === "accepted" && (
-                        <Button variant="ghost" size="icon" onClick={() => setSelected(team)} title={`View ${team.teamName} lineup`}>
-                          <Eye />
-                        </Button>
-                      )}
-                    </TableCell>
-                  )}
-                </TableRow>
-              ))}
-              {state.standings.length === 0 && (
-                <TableRow><TableCell colSpan={6} className="h-28 text-center text-neutral-500">Standings will appear after the first kickoff.</TableCell></TableRow>
-              )}
-            </TableBody>
-          </Table>
+        <div className="p-5">
+          <p className="text-xs font-bold uppercase text-neutral-500">Harness</p>
+          <p className="mt-2 whitespace-pre-wrap break-words text-sm font-semibold">{team.harnessInfo?.trim() || "No harness information provided."}</p>
+          <div className="mt-6 border-t border-neutral-300 pt-5" aria-live="polite">
+            {error ? <p className="text-sm text-red-800">{error}</p> : !details ? (
+              <p className="text-sm text-neutral-500">Loading submission details…</p>
+            ) : (
+              <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-6">{details.chainOfThought?.trim() || "No decision summary or tool log was provided for this submission."}</pre>
+            )}
+          </div>
         </div>
-      </section> : (
-        <section className="mt-10 rounded-[8px] border border-neutral-300 bg-white/50 px-6 py-12 text-center">
-          <ShieldCheck className="mx-auto size-6 text-blue-700" />
-          <h2 className="mt-4 text-base font-extrabold text-neutral-950">Teams and lineups are sealed</h2>
-          <p className="mt-2 text-sm text-neutral-500">They will appear after the first game kicks off.</p>
-        </section>
-      )}
-        {selected && state.activeWeek && <LineupModal team={selected} week={state.activeWeek} onClose={() => setSelected(null)} />}
-      </main>
-      <ContestRules />
+      </dialog>
     </>
+  );
+}
+
+function WeeklyCompetition({ state }: { state: PublicStateResponse }) {
+  const defaultWeek = state.activeWeek ?? state.weeks.at(-1)?.week ?? null;
+  const [selectedWeek, setSelectedWeek] = useState<number | null>(defaultWeek);
+  const [selectedTeam, setSelectedTeam] = useState<PublicTeamStanding | null>(null);
+
+  useEffect(() => {
+    setSelectedWeek(state.activeWeek ?? state.weeks.at(-1)?.week ?? null);
+  }, [state.activeWeek]);
+
+  const week = state.weeks.find((item) => item.week === selectedWeek) ?? state.weeks.at(-1);
+  const orderedWeeks = [...state.weeks].sort((left, right) => right.week - left.week);
+  const winnerLabel = week?.winners.length === 1 ? "Week winner" : "Co-winners";
+
+  return (
+    <section className="border-t border-neutral-300 bg-white/45">
+      <div className="mx-auto max-w-[1180px] px-5 py-12 sm:px-8 lg:py-16">
+        <div className="flex flex-col justify-between gap-6 sm:flex-row sm:items-end">
+          <div>
+            <p className="text-xs font-bold uppercase text-blue-700">Weekly competition</p>
+            <h2 className="mt-2 text-3xl font-black text-neutral-950 sm:text-4xl">This season, week by week</h2>
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-neutral-600">
+              Follow the active contest, then revisit every completed week and its official winner.
+            </p>
+          </div>
+          {week && (
+            <div className="flex items-center gap-3 border-l-2 border-lime-400 pl-4 text-sm">
+              <Clock3 className="size-4 text-neutral-500" />
+              <div>
+                <p className="font-semibold text-neutral-950">Week {week.week} first kickoff</p>
+                <p className="text-neutral-500">{formatDate(week.firstGameAt)}</p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {orderedWeeks.length > 0 && (
+          <nav className="mt-8 flex gap-2 overflow-x-auto pb-2" aria-label="Competition weeks">
+            {orderedWeeks.map((item) => {
+              const isSelected = item.week === week?.week;
+              const isActive = item.week === state.activeWeek;
+              return (
+                <button
+                  type="button"
+                  key={item.week}
+                  onClick={() => { setSelectedWeek(item.week); setSelectedTeam(null); }}
+                  aria-current={isSelected ? "page" : undefined}
+                  className={`inline-flex shrink-0 items-center gap-2 rounded-[6px] border px-3 py-2 text-sm font-bold transition-colors ${isSelected ? "border-neutral-950 bg-neutral-950 text-white" : "border-neutral-300 bg-white/70 text-neutral-700 hover:border-neutral-500"}`}
+                >
+                  {item.status === "final" && <Trophy className="size-3.5" />}
+                  Week {item.week}
+                  {isActive && <span className={`text-[10px] font-bold uppercase ${isSelected ? "text-lime-300" : "text-blue-700"}`}>Active</span>}
+                </button>
+              );
+            })}
+          </nav>
+        )}
+
+        {!week ? (
+          <div className="mt-8 rounded-[8px] border border-neutral-300 bg-white/60 px-6 py-12 text-center">
+            <Clock3 className="mx-auto size-6 text-blue-700" />
+            <h3 className="mt-4 text-base font-extrabold text-neutral-950">The first weekly challenge is coming soon</h3>
+            <p className="mt-2 text-sm text-neutral-500">Registration remains open while the next Fantasy Nerds slate is prepared.</p>
+          </div>
+        ) : (
+          <>
+            <div className="mt-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+              <div>
+                <div className="flex items-center gap-3">
+                  <h3 className="text-2xl font-extrabold text-neutral-950">Week {week.week}</h3>
+                  <WeekStatusBadge week={week} />
+                </div>
+                <p className="mt-2 text-sm text-neutral-500">
+                  {week.status === "upcoming"
+                    ? `Entries close ${formatDate(week.deadlineAt)}.`
+                    : week.status === "live"
+                      ? "Fantasy Nerds points refresh automatically throughout the week."
+                      : "Official weekly results."}
+                </p>
+              </div>
+            </div>
+
+            {week.status === "final" && week.winners.length > 0 && (
+              <div className="mt-6 rounded-[8px] border border-amber-300 bg-amber-50/80 p-6 sm:flex sm:items-center sm:justify-between">
+                <div className="flex items-center gap-4">
+                  <span className="grid size-12 shrink-0 place-items-center rounded-full bg-amber-300 text-amber-950"><Trophy className="size-6" /></span>
+                  <div>
+                    <p className="text-xs font-bold uppercase text-amber-800">{winnerLabel}</p>
+                    <p className="mt-1 text-xl font-black text-neutral-950">{week.winners.map((winner) => winner.teamName).join(" & ")}</p>
+                  </div>
+                </div>
+                <p className="mt-4 font-mono text-2xl font-black text-neutral-950 sm:mt-0">{pointsFormatter.format(week.winners[0].weeklyPoints)} pts</p>
+              </div>
+            )}
+
+            {week.teamsRevealed ? (
+              <div className="mt-6 overflow-x-auto rounded-[8px] border border-neutral-300 bg-white/60">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-16 text-center">Rank</TableHead>
+                      <TableHead>Team</TableHead>
+                      <TableHead>Harness</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Week</TableHead>
+                      <TableHead className="text-right">Season</TableHead>
+                      <TableHead className="w-16"><span className="sr-only">Lineup</span></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {week.standings.map((team, index) => (
+                      <TableRow key={team.id}>
+                        <TableCell className="text-center font-mono text-base font-bold">{String(team.rank).padStart(2, "0")}</TableCell>
+                        <TableCell>
+                          <div className="flex min-w-[190px] items-center gap-3">
+                            <span className={`grid size-9 shrink-0 place-items-center rounded-[6px] text-xs font-black text-neutral-950 ${monogramColors[index % monogramColors.length]}`}>
+                              {team.teamName.split(/\s+/).slice(0, 2).map((part) => part[0]).join("")}
+                            </span>
+                            <div className="min-w-0">
+                              <p className="font-bold text-neutral-950">{team.teamName}</p>
+                              <XHandleLink handle={team.xHandle} />
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <HarnessDetails key={`${week.week}-${team.id}`} team={team} week={week.week} />
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={team.submissionStatus === "accepted" ? "accepted" : team.submissionStatus === "missed" ? "missed" : "neutral"}>
+                            {team.submissionStatus}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-base font-bold">{pointsFormatter.format(team.weeklyPoints)}</TableCell>
+                        <TableCell className="text-right font-mono text-base">{pointsFormatter.format(team.seasonPoints)}</TableCell>
+                        <TableCell>
+                          {week.lineupRevealed && team.submissionStatus === "accepted" && (
+                            <Button variant="ghost" size="icon" onClick={() => setSelectedTeam(team)} title={`View ${team.teamName} lineup`}>
+                              <Eye />
+                            </Button>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {week.standings.length === 0 && (
+                      <TableRow><TableCell colSpan={7} className="h-28 text-center text-neutral-500">No eligible teams for this week.</TableCell></TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            ) : (
+              <div className="mt-6 rounded-[8px] border border-neutral-300 bg-white/60 px-6 py-12 text-center">
+                <ShieldCheck className="mx-auto size-6 text-blue-700" />
+                <h3 className="mt-4 text-base font-extrabold text-neutral-950">Teams and lineups are sealed</h3>
+                <p className="mt-2 text-sm text-neutral-500">They will appear after the first game kicks off.</p>
+              </div>
+            )}
+          </>
+        )}
+
+        {selectedTeam && week && <LineupModal team={selectedTeam} week={week.week} onClose={() => setSelectedTeam(null)} />}
+      </div>
+    </section>
   );
 }
 
@@ -448,7 +614,13 @@ export function App() {
   return (
     <div className="min-h-screen bg-[var(--paper)] text-neutral-950">
       {verification && <div className={`border-b px-5 py-3 text-center text-sm font-semibold ${verification.status === "success" ? "border-lime-300 bg-lime-50 text-lime-900" : "border-red-300 bg-red-50 text-red-900"}`}>{verification.message}</div>}
-      {!state ? <LoadingState /> : state.state === "preseason" ? <Preseason state={state} /> : <Scoreboard state={state} />}
+      {!state ? <LoadingState /> : (
+        <main>
+          <Enrollment state={state} />
+          <WeeklyCompetition state={state} />
+          <ContestRules />
+        </main>
+      )}
       <footer className="border-t border-neutral-300">
         <div className="mx-auto flex max-w-[1180px] flex-col gap-4 px-5 py-6 text-xs text-neutral-500 sm:px-8 lg:flex-row lg:items-center lg:justify-between">
           <span>Agent Fantasy Football</span>

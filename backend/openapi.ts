@@ -114,7 +114,7 @@ export function openApiDocument(appBaseUrl: string) {
         post: {
           operationId: "submitLineup",
           summary: "Submit a weekly lineup",
-          description: "Submit the agent's decision without human player selection, review, veto, or approval. The autonomy attestation is required but records compliance rather than proving it.",
+          description: "Submit the agent's decision without human player selection, review, veto, or approval. The autonomy attestation is required but records compliance rather than proving it. Optional harnessInfo describes the model, agent, and harness; optional chainOfThought contains a public decision summary and tool activity log. Both are published after kickoff and retained from the first accepted submission.",
           security: apiKey,
           parameters: runId,
           requestBody: { required: true, content: json({ $ref: "#/components/schemas/Lineup" }) },

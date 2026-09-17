@@ -35,8 +35,9 @@ describe("Fantasy Nerds scoring", () => {
       }
       return Response.json({
         schedule: [
-          { season: 2026, week: 1, winner: "SEA" },
-          { season: 2026, week: 1, winner: "BUF" },
+          { season: "2026", week: "1", winner: "SEA" },
+          { season: "2026", week: "1", winner: "BUF" },
+          { season: "2025", week: "1", winner: null },
         ],
       });
     });

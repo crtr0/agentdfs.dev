@@ -2,10 +2,13 @@ import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import type { Pool } from "pg";
 import { newDb } from "pg-mem";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createChallenge, getOrCreateRun } from "./services/challenges";
-import { reconcileChallengeLifecycle, reconcileChallengeSchedule } from "./scheduler";
+import { syncChallengeScores } from "./services/scoring";
+import { reconcileChallengeLifecycle, reconcileChallengeSchedule, reconcileScores } from "./scheduler";
 import type { Env, TeamRecord } from "./types";
+
+vi.mock("./services/scoring", () => ({ syncChallengeScores: vi.fn() }));
 
 function testEnvironment(): Env {
   const memory = newDb({ autoCreateForeignKeyIndices: true });
@@ -79,6 +82,37 @@ describe("application scheduler", () => {
       [run.id],
     );
     expect(statuses.rows[0]).toEqual({ challenge_status: "closed", run_status: "expired" });
+    await env.DB.end();
+  });
+
+  it("excludes test challenges from scheduled scoring", async () => {
+    const env = testEnvironment();
+    vi.mocked(syncChallengeScores).mockClear();
+    await createChallenge(env.DB, {
+      id: "challenge_test_scoring",
+      season: 0,
+      week: 0,
+      releasedAt: "2000-01-01T00:00:00Z",
+      deadlineAt: "2000-01-01T00:05:00Z",
+      firstGameAt: "2000-01-01T01:00:00Z",
+    });
+    await createChallenge(env.DB, {
+      id: "challenge_2099_1",
+      season: 2099,
+      week: 1,
+      releasedAt: "2000-01-01T00:00:00Z",
+      deadlineAt: "2000-01-01T00:05:00Z",
+      firstGameAt: "2000-01-01T01:00:00Z",
+    });
+
+    await expect(reconcileScores(env, "2000-01-02T00:00:00Z"))
+      .resolves.toEqual({ challengesUpdated: 1 });
+    expect(syncChallengeScores).toHaveBeenCalledOnce();
+    expect(vi.mocked(syncChallengeScores).mock.calls[0]?.[1]).toMatchObject({
+      id: "challenge_2099_1",
+      season: 2099,
+      week: 1,
+    });
     await env.DB.end();
   });
 });

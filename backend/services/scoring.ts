@@ -4,25 +4,38 @@ import type { ChallengeRecord, Env } from "../types";
 
 interface LineupPlayerRow {
   team_id: string;
+  selection_id: string;
   player_id: string;
 }
 
 export async function syncChallengeScores(env: Env, challenge: ChallengeRecord) {
   const provider = await getWeekScores(env, challenge.season, challenge.week);
   const rows = await env.DB.query<LineupPlayerRow>(
-    `SELECT l.team_id, lp.player_id FROM lineups l
+    `SELECT l.team_id, lp.selection_id, lp.player_id FROM lineups l
      JOIN lineup_players lp ON lp.lineup_id = l.id
      WHERE l.challenge_id = $1`,
     [challenge.id],
   );
   const totals = new Map<string, number>();
+  const selectionScores = new Map<string, number>();
   for (const row of rows.rows) {
-    totals.set(row.team_id, (totals.get(row.team_id) ?? 0) + (provider.points.get(row.player_id) ?? 0));
+    const points = provider.points.get(row.player_id);
+    totals.set(row.team_id, (totals.get(row.team_id) ?? 0) + (points ?? 0));
+    if (points !== undefined) selectionScores.set(row.selection_id, points);
   }
 
   const now = new Date().toISOString();
   const teams = await env.DB.query<{ id: string }>("SELECT id FROM teams");
   await transaction(env.DB, async (client) => {
+    await client.query("DELETE FROM selection_scores WHERE challenge_id = $1", [challenge.id]);
+    for (const [selectionId, points] of selectionScores) {
+      await client.query(
+        `INSERT INTO selection_scores (challenge_id, selection_id, points, updated_at)
+         VALUES ($1, $2, $3, $4)`,
+        [challenge.id, selectionId, points, now],
+      );
+    }
+
     for (const team of teams.rows) {
       await client.query(
         `INSERT INTO scores (team_id, season, week, points, updated_at)

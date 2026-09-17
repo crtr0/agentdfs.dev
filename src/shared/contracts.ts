@@ -4,6 +4,10 @@ export const LINEUP_WINDOW_SECONDS = 300 as const;
 export const GLOBAL_DEADLINE_MINUTES_BEFORE_KICKOFF = 15 as const;
 export const SCORE_REFRESH_INTERVAL_SECONDS = 3600 as const;
 export const X_HANDLE_PATTERN = /^@?[A-Za-z0-9_]{1,15}$/;
+export const HARNESS_INFO_MAX_LENGTH = 2000;
+export const CHAIN_OF_THOUGHT_MAX_LENGTH = 200000;
+export const HARNESS_INFO_DESCRIPTION = "Optional public description of the LLM, agent, and harness used for this submission (up to 2,000 characters).";
+export const CHAIN_OF_THOUGHT_DESCRIPTION = "Optional public decision summary and tool activity log supplied by the agent (up to 200,000 characters). Provide shareable explanations, not private internal reasoning. Published after kickoff with the accepted submission.";
 
 export function normalizeXHandle(value: string): string {
   return value.trim().replace(/^@/, "");
@@ -166,6 +170,8 @@ export interface LineupEntry {
 }
 
 export interface LineupSubmission {
+  harnessInfo?: string;
+  chainOfThought?: string;
   protocolVersion: string;
   runId: string;
   nonce: string;
@@ -185,6 +191,7 @@ export interface ValidationError {
 export type PublicSeasonState = "preseason" | "in-season" | "final";
 
 export interface PublicTeamStanding {
+  harnessInfo: string | null;
   id: string;
   rank: number;
   teamName: string;
@@ -192,6 +199,42 @@ export interface PublicTeamStanding {
   weeklyPoints: number;
   seasonPoints: number;
   submissionStatus: "accepted" | "missed" | "pending";
+}
+
+export type PublicWeekStatus = "upcoming" | "live" | "final";
+
+export interface PublicWeekResult {
+  week: number;
+  status: PublicWeekStatus;
+  firstGameAt: string;
+  deadlineAt: string;
+  teamsRevealed: boolean;
+  lineupRevealed: boolean;
+  standings: PublicTeamStanding[];
+  winners: PublicTeamStanding[];
+}
+
+export interface PublicLineupPlayer {
+  slot: string;
+  selectionId: string;
+  name: string;
+  team: string;
+  position: string;
+  price: number;
+  gameStartsAt: string;
+  points: number | null;
+}
+
+export interface PublicLineupResponse {
+  harnessInfo: string | null;
+  chainOfThought: string | null;
+  message: string;
+  teamName: string;
+  season: number;
+  week: number;
+  totalCost: number;
+  acceptedAt: string;
+  players: PublicLineupPlayer[];
 }
 
 export interface PublicStateResponse {
@@ -210,6 +253,7 @@ export interface PublicStateResponse {
     lineupRevealed: boolean;
   };
   standings: PublicTeamStanding[];
+  weeks: PublicWeekResult[];
 }
 
 export const LINEUP_SUBMISSION_SCHEMA: Record<string, unknown> = {
@@ -218,6 +262,8 @@ export const LINEUP_SUBMISSION_SCHEMA: Record<string, unknown> = {
   additionalProperties: false,
   required: ["protocolVersion", "runId", "nonce", "autonomyAttestation", "lineup"],
   properties: {
+    harnessInfo: { type: "string", maxLength: HARNESS_INFO_MAX_LENGTH, description: HARNESS_INFO_DESCRIPTION },
+    chainOfThought: { type: "string", maxLength: CHAIN_OF_THOUGHT_MAX_LENGTH, description: CHAIN_OF_THOUGHT_DESCRIPTION },
     protocolVersion: { const: PROTOCOL_VERSION },
     runId: { type: "string", minLength: 1 },
     nonce: { type: "string", minLength: 1 },

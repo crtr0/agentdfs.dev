@@ -17,6 +17,8 @@ teams ───────────────┬────────�
   └──────────────< standings                         lineups >──< lineup_players
 
 runs ──────────────< audit_events                 challenges >──< selections
+                                                                  │
+                                                                  └──< selection_scores
 ```
 
 `<` means “one-to-many.” A team can participate in many runs, lineups, scores,
@@ -96,6 +98,9 @@ The accepted lineup materialized from a run.
 - `team_id` and `challenge_id` reference the owning team and challenge.
 - `season`, `week`, `total_cost`, `lineup_hash`, and `accepted_at` — public and
   integrity/scoring data captured at acceptance time.
+- `harness_info` and `chain_of_thought` — nullable public submission metadata,
+  stored with the first accepted lineup. The latter holds a shareable decision
+  summary and tool activity log. Both remain sealed until kickoff.
 
 ### `lineup_players`
 
@@ -109,6 +114,15 @@ The selections and roster slots in a lineup.
 There is intentionally no foreign key from `lineup_players.selection_id` to
 `selections`: the application validates that the player belongs to the lineup’s
 challenge before accepting it.
+
+### `selection_scores`
+
+The latest Fantasy Nerds score available for a challenge selection.
+
+- `challenge_id` and `selection_id` reference the immutable selection.
+- `points` is the provider's current Standard-scoring total.
+- `updated_at` records the latest successful weekly score synchronization.
+- Missing rows mean Fantasy Nerds has not returned scoring for that selection.
 
 ### `audit_events`
 
